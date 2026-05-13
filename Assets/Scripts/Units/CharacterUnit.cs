@@ -10,6 +10,7 @@ public class CharacterUnit : MonoBehaviour
     [SerializeField] private int currentAttackRange;
 
     public Tile CurrentTile { get; private set; }
+    public bool IsPlacedOnTile => CurrentTile != null;
 
     // ===== DATA FRÅN CHARACTER DATA =====
 
@@ -29,6 +30,8 @@ public class CharacterUnit : MonoBehaviour
 
     public int CurrentAttackRange => currentAttackRange;
 
+    
+
     private void Awake()
     {
         currentHealth = MaxHealth;
@@ -37,10 +40,22 @@ public class CharacterUnit : MonoBehaviour
 
     public void PlaceOnTile(Tile newTile)
     {
+        if (newTile == null)
+        {
+            Debug.LogWarning($"{CharacterName} cannot be placed on a null tile.");
+            return;
+        }
+
+        if (newTile.IsOccupied && newTile.OccupyingUnit != this)
+        {
+            Debug.LogWarning($"{CharacterName} cannot be placed on {newTile.name}, because it is already occupied.");
+            return;
+        }
+
         // Rensa gamla tile
         if (CurrentTile != null)
         {
-            CurrentTile.SetOccupyingUnit(null);
+            CurrentTile.ClearOccupyingUnit();
         }
 
         // Sätt nya
@@ -48,7 +63,7 @@ public class CharacterUnit : MonoBehaviour
         CurrentTile.SetOccupyingUnit(this);
 
         // Flytta objektet visuellt
-        transform.position = newTile.transform.position + Vector3.up * 0.5f;
+        transform.position = newTile.transform.position + Vector3.up * 1f;
     }
 
     public void TakeDamage(int amount)
