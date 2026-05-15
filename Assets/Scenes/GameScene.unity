@@ -3086,16 +3086,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a4078273f0db30640af2d948dcc115ec, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GameDebugController
-  boardManager: {fileID: 1718503150}
-  unit: {fileID: 902440216}
-  testUnitMovement: 0
-  testBoardManager: 0
-  startPosition: {x: 0, y: 0}
-  otherPosition: {x: 0, y: 4}
-  enableHotkeys: 1
-  controlledUnit: {fileID: 902440216}
-  placeUnitOnStart: 1
-  unitStartPosition: {x: 0, y: 0}
+  gameManager: {fileID: 1797924420}
+  playerOneTargetOne: {x: -2, y: 0}
+  playerOneTargetTwo: {x: -4, y: 0}
+  playerOneTargetThree: {x: -5, y: 0}
+  playerTwoTargetOne: {x: -4, y: 3}
+  playerTwoTargetTwo: {x: -4, y: 2}
+  playerTwoTargetThree: {x: -4, y: 1}
 --- !u!1 &1260254113
 GameObject:
   m_ObjectHideFlags: 0
@@ -4589,6 +4586,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1797924419}
+  - component: {fileID: 1797924420}
   m_Layer: 0
   m_Name: GameManager
   m_TagString: Untagged
@@ -4611,6 +4609,28 @@ Transform:
   m_Children: []
   m_Father: {fileID: 1334819326}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1797924420
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1797924418}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d109d00991dfc0242a7738b1e67b8ce9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GameManager
+  boardManager: {fileID: 1718503150}
+  playerOneUnit: {fileID: 902440216}
+  playerTwoUnit: {fileID: 1151018424}
+  playerOneStartPosition: {x: 0, y: 0}
+  playerTwoStartPosition: {x: -5, y: 5}
+  actionsPerTurn: 2
+  basicAttackDamage: 1
+  activePlayer: 0
+  actionsRemainingThisTurn: 0
+  isGameOver: 0
 --- !u!1 &1813224619
 GameObject:
   m_ObjectHideFlags: 0

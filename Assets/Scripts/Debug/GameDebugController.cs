@@ -4,109 +4,21 @@ using UnityEngine.InputSystem;
 public class GameDebugController : MonoBehaviour
 {
     [Header("References")]
-    [SerializeField] private BoardManager boardManager;
-    [SerializeField] private CharacterUnit unit;
+    [SerializeField] private GameManager gameManager;
 
-    [Header("Test Toggles")]
-    [SerializeField] private bool testUnitMovement;
-    [SerializeField] private bool testBoardManager;
+    [Header("Player One Debug Movement Targets")]
+    [SerializeField] private Vector2Int playerOneTargetOne = new Vector2Int(-1, 0);
+    [SerializeField] private Vector2Int playerOneTargetTwo = new Vector2Int(-2, 0);
+    [SerializeField] private Vector2Int playerOneTargetThree = new Vector2Int(-3, 0);
 
-    [Header("Test Positions")]
-    [SerializeField] private Vector2Int startPosition = new Vector2Int(0, 0);
-    [SerializeField] private Vector2Int otherPosition = new Vector2Int(1, 0);
-
-    [Header("Runtime Debug Controls")]
-    [SerializeField] private bool enableHotkeys = true;
-    [SerializeField] private CharacterUnit controlledUnit;
-
-    //Temporärt före Gamelogic script/gamelogic manager
-    [Header("Start Placement")]
-    [SerializeField] private bool placeUnitOnStart = true;
-    [SerializeField] private Vector2Int unitStartPosition = new Vector2Int(0, 0);
-
-    private void Start()
-    {
-        if (testUnitMovement)
-        {
-            TestUnitMovement();
-        }
-
-        if (testBoardManager)
-        {
-            TestBoardManager();
-        }
-
-        //Temporärt före Gamelogic script/gamelogic manager
-        if (placeUnitOnStart && controlledUnit != null && boardManager != null)
-        {
-            Tile startTile = boardManager.GetTileAtPosition(unitStartPosition);
-
-            if (startTile != null)
-            {
-                controlledUnit.PlaceOnTile(startTile);
-            }
-            else
-            {
-                Debug.LogWarning($"No tile found at start position {unitStartPosition}.");
-            }
-        }
-    }
-
-    private void TestUnitMovement()
-    {
-        Debug.Log("=== UNIT MOVEMENT TEST ===");
-
-        Tile startTile = boardManager.GetTileAtPosition(startPosition);
-        Tile otherTile = boardManager.GetTileAtPosition(otherPosition);
-
-        if (startTile == null || otherTile == null)
-        {
-            Debug.LogWarning("Movement test failed: one or both test tiles were not found.");
-            return;
-        }
-
-        unit.PlaceOnTile(startTile);
-
-        Debug.Log($"Unit placed on: {unit.CurrentTile.name}");
-        Debug.Log($"Start tile occupied: {startTile.IsOccupied}");
-
-        unit.PlaceOnTile(otherTile);
-
-        Debug.Log($"Unit moved to: {unit.CurrentTile.name}");
-        Debug.Log($"Old tile occupied: {startTile.IsOccupied}");
-        Debug.Log($"New tile occupied: {otherTile.IsOccupied}");
-
-        Debug.Log("=== UNIT MOVEMENT TEST END ===");
-    }
-
-    private void TestBoardManager()
-    {
-        Debug.Log("=== BOARD MANAGER TEST ===");
-
-        Tile tile = boardManager.GetTileAtPosition(startPosition);
-
-        Debug.Log($"Tile at {startPosition}: {tile}");
-
-        bool hasTile = boardManager.HasTileAtPosition(startPosition);
-        Debug.Log($"Has tile at {startPosition}: {hasTile}");
-
-        bool isOccupiedBefore = boardManager.IsTileOccupied(startPosition);
-        Debug.Log($"Is tile occupied before placing unit: {isOccupiedBefore}");
-
-        if (tile != null)
-        {
-            unit.PlaceOnTile(tile);
-        }
-
-        bool isOccupiedAfter = boardManager.IsTileOccupied(startPosition);
-        Debug.Log($"Is tile occupied after placing unit: {isOccupiedAfter}");
-
-        Debug.Log("=== BOARD MANAGER TEST END ===");
-    }
+    [Header("Player Two Debug Movement Targets")]
+    [SerializeField] private Vector2Int playerTwoTargetOne = new Vector2Int(-4, 5);
+    [SerializeField] private Vector2Int playerTwoTargetTwo = new Vector2Int(-3, 5);
+    [SerializeField] private Vector2Int playerTwoTargetThree = new Vector2Int(-2, 5);
 
     private void Update()
     {
-        if (!enableHotkeys || controlledUnit == null || boardManager == null)
+        if (gameManager == null)
         {
             return;
         }
@@ -118,54 +30,78 @@ public class GameDebugController : MonoBehaviour
             return;
         }
 
-        if (keyboard.upArrowKey.wasPressedThisFrame)
+        if (keyboard.digit1Key.wasPressedThisFrame)
         {
-            TryMoveControlledUnit(Vector2Int.up);
+            TryDebugMove(GetTargetOne());
         }
 
-        if (keyboard.downArrowKey.wasPressedThisFrame)
+        if (keyboard.digit2Key.wasPressedThisFrame)
         {
-            TryMoveControlledUnit(Vector2Int.down);
+            TryDebugMove(GetTargetTwo());
         }
 
-        if (keyboard.leftArrowKey.wasPressedThisFrame)
+        if (keyboard.digit3Key.wasPressedThisFrame)
         {
-            TryMoveControlledUnit(Vector2Int.left);
+            TryDebugMove(GetTargetThree());
         }
 
-        if (keyboard.rightArrowKey.wasPressedThisFrame)
+        if (keyboard.aKey.wasPressedThisFrame)
         {
-            TryMoveControlledUnit(Vector2Int.right);
+            gameManager.TryBasicAttack();
+        }
+
+        if (keyboard.spaceKey.wasPressedThisFrame)
+        {
+            LogGameState();
         }
     }
 
-    private void TryMoveControlledUnit(Vector2Int direction)
+    private Vector2Int GetTargetOne()
     {
-        if (controlledUnit.CurrentTile == null)
+        return gameManager.ActivePlayer == PlayerTurn.PlayerOne
+            ? playerOneTargetOne
+            : playerTwoTargetOne;
+    }
+
+    private Vector2Int GetTargetTwo()
+    {
+        return gameManager.ActivePlayer == PlayerTurn.PlayerOne
+            ? playerOneTargetTwo
+            : playerTwoTargetTwo;
+    }
+
+    private Vector2Int GetTargetThree()
+    {
+        return gameManager.ActivePlayer == PlayerTurn.PlayerOne
+            ? playerOneTargetThree
+            : playerTwoTargetThree;
+    }
+
+    private void TryDebugMove(Vector2Int targetPosition)
+    {
+        bool moved = gameManager.TryMoveActiveUnitToPosition(targetPosition);
+
+        if (!moved)
         {
-            Debug.LogWarning("Controlled unit has no current tile.");
-            return;
+            Debug.Log($"Debug move to {targetPosition} failed.");
         }
+    }
 
-        Vector2Int currentPosition = controlledUnit.CurrentTile.GridPosition;
-        Vector2Int targetPosition = currentPosition + direction;
+    private void LogGameState()
+    {
+        CharacterUnit activeUnit = gameManager.ActiveUnit;
+        CharacterUnit enemyUnit = gameManager.EnemyUnit;
 
-        Tile targetTile = boardManager.GetTileAtPosition(targetPosition);
-
-        if (targetTile == null)
-        {
-            Debug.Log($"No tile found at {targetPosition}.");
-            return;
-        }
-
-        if (targetTile.IsOccupied)
-        {
-            Debug.Log($"Tile at {targetPosition} is occupied.");
-            return;
-        }
-
-        controlledUnit.PlaceOnTile(targetTile);
-
-        Debug.Log($"Moved unit to {targetPosition}.");
+        Debug.Log(
+            $"Active player: {gameManager.ActivePlayer}\n" +
+            $"Active unit: {activeUnit.CharacterName}\n" +
+            $"Active unit tile: {activeUnit.CurrentTile?.GridPosition.ToString() ?? "None"}\n" +
+            $"Active unit HP: {activeUnit.CurrentHealth}\n" +
+            $"Enemy unit: {enemyUnit.CharacterName}\n" +
+            $"Enemy unit tile: {enemyUnit.CurrentTile?.GridPosition.ToString() ?? "None"}\n" +
+            $"Enemy unit HP: {enemyUnit.CurrentHealth}\n" +
+            $"Actions left: {gameManager.ActionsRemainingThisTurn}\n" +
+            $"Game over: {gameManager.IsGameOver}"
+        );
     }
 }

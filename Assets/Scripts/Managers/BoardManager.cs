@@ -8,7 +8,7 @@ public class BoardManager : MonoBehaviour
 
     private Dictionary<Vector2Int, Tile> tilesByPosition = new Dictionary<Vector2Int, Tile>();
 
-    private void Start()
+    private void Awake()
     {
         RegisterAllTiles();
     }
