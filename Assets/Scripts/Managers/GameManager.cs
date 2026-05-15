@@ -1,3 +1,4 @@
+using Unity.Multiplayer.PlayMode;
 using UnityEngine;
 
 public enum PlayerTurn
@@ -27,6 +28,9 @@ public class GameManager : MonoBehaviour
     [SerializeField] private PlayerTurn activePlayer = PlayerTurn.PlayerOne;
     [SerializeField] private int actionsRemainingThisTurn;
     [SerializeField] private bool isGameOver;
+
+    public CharacterUnit PlayerOneUnit => playerOneUnit;
+    public CharacterUnit PlayerTwoUnit => playerTwoUnit;
 
     public PlayerTurn ActivePlayer => activePlayer;
 
