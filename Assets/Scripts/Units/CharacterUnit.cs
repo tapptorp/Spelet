@@ -11,16 +11,17 @@ public class CharacterUnit : MonoBehaviour
 
     public Tile CurrentTile { get; private set; }
     public bool IsPlacedOnTile => CurrentTile != null;
+    public bool HasCharacterData => characterData != null;
 
     // ===== DATA FRÅN CHARACTER DATA =====
 
-    public string CharacterName => characterData.CharacterName;
+    public string CharacterName => characterData != null ? characterData.CharacterName : gameObject.name;
 
-    public int MaxHealth => characterData.MaxHealth;
+    public int MaxHealth => characterData != null ? characterData.MaxHealth : 0;
 
-    public int Movement => characterData.Movement;
+    public int Movement => characterData != null ? characterData.Movement : 0;
 
-    public int AttackRange => characterData.AttackRange;
+    public int AttackRange => characterData != null ? characterData.AttackRange : 0;
 
     // ===== RUNTIME VALUES =====
 
@@ -30,12 +31,20 @@ public class CharacterUnit : MonoBehaviour
 
     public int CurrentAttackRange => currentAttackRange;
 
-    
+
 
     private void Awake()
     {
+        if (characterData == null)
+        {
+            Debug.LogWarning($"{gameObject.name} is missing CharacterData.");
+            currentHealth = 0;
+            currentAttackRange = 0;
+            return;
+        }
+
         currentHealth = MaxHealth;
-        currentAttackRange = characterData.AttackRange;
+        currentAttackRange = AttackRange;
     }
 
     public void PlaceOnTile(Tile newTile)
@@ -87,3 +96,4 @@ public class CharacterUnit : MonoBehaviour
         currentHealth = Mathf.Min(currentHealth, MaxHealth);
     }
 }
+

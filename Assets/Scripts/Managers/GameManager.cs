@@ -1,4 +1,3 @@
-using Unity.Multiplayer.PlayMode;
 using UnityEngine;
 
 public enum PlayerTurn
@@ -11,6 +10,7 @@ public class GameManager : MonoBehaviour
 {
     [Header("References")]
     [SerializeField] private BoardManager boardManager;
+    [SerializeField] private MovementManager movementManager;
     [SerializeField] private CharacterUnit playerOneUnit;
     [SerializeField] private CharacterUnit playerTwoUnit;
 
@@ -45,19 +45,109 @@ public class GameManager : MonoBehaviour
     public int ActionsRemainingThisTurn => actionsRemainingThisTurn;
     public bool IsGameOver => isGameOver;
 
+    private void Awake()
+    {
+        if (boardManager == null)
+        {
+            boardManager = FindAnyObjectByType<BoardManager>();
+        }
+
+        if (movementManager == null)
+        {
+            movementManager = FindAnyObjectByType<MovementManager>();
+        }
+
+        if (movementManager == null)
+        {
+            movementManager = gameObject.AddComponent<MovementManager>();
+            Debug.Log("GameManager created a MovementManager automatically.");
+        }
+    }
+
     private void Start()
     {
+        if (!ValidateSetup())
+        {
+            Debug.LogError("Game could not start because setup validation failed.");
+            enabled = false;
+            return;
+        }
+
         StartGame();
+    }
+
+    private bool ValidateSetup()
+    {
+        bool isValid = true;
+
+        if (boardManager == null)
+        {
+            Debug.LogError("GameManager setup error: BoardManager is missing.");
+            isValid = false;
+        }
+
+        if (movementManager == null)
+        {
+            Debug.LogError("GameManager setup error: MovementManager is missing.");
+            isValid = false;
+        }
+
+        if (playerOneUnit == null)
+        {
+            Debug.LogError("GameManager setup error: Player One Unit is missing.");
+            isValid = false;
+        }
+        else if (!playerOneUnit.HasCharacterData)
+        {
+            Debug.LogError("GameManager setup error: Player One Unit is missing CharacterData.");
+            isValid = false;
+        }
+
+        if (playerTwoUnit == null)
+        {
+            Debug.LogError("GameManager setup error: Player Two Unit is missing.");
+            isValid = false;
+        }
+        else if (!playerTwoUnit.HasCharacterData)
+        {
+            Debug.LogError("GameManager setup error: Player Two Unit is missing CharacterData.");
+            isValid = false;
+        }
+
+        if (boardManager != null)
+        {
+            ValidateStartTiles(ref isValid);
+        }
+
+        return isValid;
+    }
+
+    private void ValidateStartTiles(ref bool isValid)
+    {
+        Tile playerOneStartTile = boardManager.GetTileAtPosition(playerOneStartPosition);
+        Tile playerTwoStartTile = boardManager.GetTileAtPosition(playerTwoStartPosition);
+
+        if (playerOneStartTile == null)
+        {
+            Debug.LogError($"GameManager setup error: No tile found at Player One start position {playerOneStartPosition}.");
+            isValid = false;
+        }
+
+        if (playerTwoStartTile == null)
+        {
+            Debug.LogError($"GameManager setup error: No tile found at Player Two start position {playerTwoStartPosition}.");
+            isValid = false;
+        }
+
+        if (playerOneStartPosition == playerTwoStartPosition)
+        {
+            Debug.LogError("GameManager setup error: Player One and Player Two have the same start position.");
+            isValid = false;
+        }
     }
 
     private void StartGame()
     {
-        if (!CanStartGame())
-        {
-            Debug.LogWarning("Game could not start. Missing one or more required references.");
-            return;
-        }
-
         bool playerOnePlaced = PlaceUnitAtStartPosition(playerOneUnit, playerOneStartPosition);
         bool playerTwoPlaced = PlaceUnitAtStartPosition(playerTwoUnit, playerTwoStartPosition);
 
@@ -71,13 +161,6 @@ public class GameManager : MonoBehaviour
         isGameOver = false;
 
         StartTurn();
-    }
-
-    private bool CanStartGame()
-    {
-        return boardManager != null &&
-               playerOneUnit != null &&
-               playerTwoUnit != null;
     }
 
     private bool PlaceUnitAtStartPosition(CharacterUnit unit, Vector2Int startPosition)
@@ -152,7 +235,7 @@ public class GameManager : MonoBehaviour
 
     public bool TryMoveActiveUnitToTile(Tile targetTile)
     {
-        string validationError = GetMoveValidationError(targetTile);
+        string validationError = GetActiveUnitMoveValidationError(targetTile);
 
         if (validationError != null)
         {
@@ -160,7 +243,13 @@ public class GameManager : MonoBehaviour
             return false;
         }
 
-        ActiveUnit.PlaceOnTile(targetTile);
+        bool moved = movementManager.TryMoveUnit(ActiveUnit, targetTile, out validationError);
+
+        if (!moved)
+        {
+            Debug.Log(validationError);
+            return false;
+        }
 
         Debug.Log($"{ActiveUnit.CharacterName} moved to {targetTile.GridPosition}.");
 
@@ -171,10 +260,10 @@ public class GameManager : MonoBehaviour
 
     public bool CanActiveUnitMoveToTile(Tile targetTile)
     {
-        return GetMoveValidationError(targetTile) == null;
+        return GetActiveUnitMoveValidationError(targetTile) == null;
     }
 
-    private string GetMoveValidationError(Tile targetTile)
+    private string GetActiveUnitMoveValidationError(Tile targetTile)
     {
         if (isGameOver)
         {
@@ -186,38 +275,7 @@ public class GameManager : MonoBehaviour
             return $"{ActiveUnit.CharacterName} has no actions left.";
         }
 
-        if (ActiveUnit.CurrentTile == null)
-        {
-            return $"{ActiveUnit.CharacterName} has no current tile.";
-        }
-
-        if (targetTile == null)
-        {
-            return "Cannot move. Target tile is null.";
-        }
-
-        if (targetTile.IsOccupied)
-        {
-            return $"Tile at {targetTile.GridPosition} is occupied.";
-        }
-
-        if (!IsTileWithinMovementRange(targetTile))
-        {
-            return $"{targetTile.GridPosition} is outside movement range.";
-        }
-
-        return null;
-    }
-
-    private bool IsTileWithinMovementRange(Tile targetTile)
-    {
-        Vector2Int activePosition = ActiveUnit.CurrentTile.GridPosition;
-        Vector2Int targetPosition = targetTile.GridPosition;
-
-        int distance = Mathf.Abs(activePosition.x - targetPosition.x) +
-                       Mathf.Abs(activePosition.y - targetPosition.y);
-
-        return distance <= ActiveUnit.Movement;
+        return movementManager.GetMoveValidationError(ActiveUnit, targetTile);
     }
 
     public bool TryBasicAttack()
