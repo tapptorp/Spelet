@@ -131,7 +131,22 @@ public class GameManager : MonoBehaviour
             ValidateStartTiles(ref isValid);
         }
 
+        ValidateCharacterDecks();
+
         return isValid;
+    }
+
+    private void ValidateCharacterDecks()
+    {
+        if (playerOneUnit != null && playerOneUnit.StartingDeck.Count == 0)
+        {
+            Debug.LogWarning($"{playerOneUnit.CharacterName} has an empty starting deck. This is okay for now, but Maneuver will not be able to draw cards.");
+        }
+
+        if (playerTwoUnit != null && playerTwoUnit.StartingDeck.Count == 0)
+        {
+            Debug.LogWarning($"{playerTwoUnit.CharacterName} has an empty starting deck. This is okay for now, but Maneuver will not be able to draw cards.");
+        }
     }
 
     private void ValidateStartTiles(ref bool isValid)
@@ -171,6 +186,9 @@ public class GameManager : MonoBehaviour
 
         playerOne = new PlayerState("Player One", playerOneUnit);
         playerTwo = new PlayerState("Player Two", playerTwoUnit);
+
+        Debug.Log($"Player One deck created from {playerOneUnit.CharacterName}. Draw pile: {playerOne.Deck.DrawPileCount}");
+        Debug.Log($"Player Two deck created from {playerTwoUnit.CharacterName}. Draw pile: {playerTwo.Deck.DrawPileCount}");
 
         activePlayer = PlayerTurn.PlayerOne;
         isGameOver = false;
@@ -237,6 +255,22 @@ public class GameManager : MonoBehaviour
 
     public bool TryMoveActiveUnitToPosition(Vector2Int targetPosition)
     {
+        // Temporary wrapper:
+        // Existing click/debug code still calls "move",
+        // but the action is now treated as a Maneuver.
+        return TryManeuverActiveUnitToPosition(targetPosition);
+    }
+
+    public bool TryMoveActiveUnitToTile(Tile targetTile)
+    {
+        // Temporary wrapper:
+        // Existing click/debug code still calls "move",
+        // but the action is now treated as a Maneuver.
+        return TryManeuverActiveUnitToTile(targetTile);
+    }
+
+    public bool TryManeuverActiveUnitToPosition(Vector2Int targetPosition)
+    {
         Tile targetTile = boardManager.GetTileAtPosition(targetPosition);
 
         if (targetTile == null)
@@ -245,17 +279,33 @@ public class GameManager : MonoBehaviour
             return false;
         }
 
-        return TryMoveActiveUnitToTile(targetTile);
+        return TryManeuverActiveUnitToTile(targetTile);
     }
 
-    public bool TryMoveActiveUnitToTile(Tile targetTile)
+    public bool TryManeuverActiveUnitToTile(Tile targetTile)
     {
-        string validationError = GetActiveUnitMoveValidationError(targetTile);
+        string validationError = GetActiveUnitManeuverValidationError(targetTile);
 
         if (validationError != null)
         {
             Debug.Log(validationError);
             return false;
+        }
+
+        // Important:
+        // The target has been validated before drawing a card.
+        // This prevents accidental invalid clicks from drawing cards.
+        CardData drawnCard = ActivePlayerState.Deck.DrawCard();
+
+        if (drawnCard != null)
+        {
+            Debug.Log($"{ActivePlayerState.PlayerName} maneuvered and drew {drawnCard.CardName}.");
+        }
+        else
+        {
+            // Fatigue damage should be added here later.
+            // For now, the maneuver is still allowed, but no card was drawn.
+            Debug.Log($"{ActivePlayerState.PlayerName} maneuvered, but the draw pile was empty. Fatigue damage is not implemented yet.");
         }
 
         bool moved = movementManager.TryMoveUnit(ActiveUnit, targetTile, out validationError);
@@ -266,7 +316,7 @@ public class GameManager : MonoBehaviour
             return false;
         }
 
-        Debug.Log($"{ActiveUnit.CharacterName} moved to {targetTile.GridPosition}.");
+        Debug.Log($"{ActiveUnit.CharacterName} maneuvered to {targetTile.GridPosition}.");
 
         ConsumeAction();
 
@@ -275,19 +325,34 @@ public class GameManager : MonoBehaviour
 
     public bool CanActiveUnitMoveToTile(Tile targetTile)
     {
-        return GetActiveUnitMoveValidationError(targetTile) == null;
+        return GetActiveUnitManeuverValidationError(targetTile) == null;
     }
 
-    private string GetActiveUnitMoveValidationError(Tile targetTile)
+    public bool CanActiveUnitManeuverToTile(Tile targetTile)
+    {
+        return GetActiveUnitManeuverValidationError(targetTile) == null;
+    }
+
+    private string GetActiveUnitManeuverValidationError(Tile targetTile)
     {
         if (isGameOver)
         {
-            return "Cannot move. Game is over.";
+            return "Cannot maneuver. Game is over.";
         }
 
         if (ActivePlayerState == null)
         {
-            return "Cannot move. Active player state is missing.";
+            return "Cannot maneuver. Active player state is missing.";
+        }
+
+        if (ActiveUnit == null)
+        {
+            return "Cannot maneuver. Active unit is missing.";
+        }
+
+        if (ActivePlayerState.Deck == null)
+        {
+            return "Cannot maneuver. Active player deck is missing.";
         }
 
         if (!ActivePlayerState.HasActionsRemaining)

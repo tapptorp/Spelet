@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 public class CharacterUnit : MonoBehaviour
@@ -23,6 +25,10 @@ public class CharacterUnit : MonoBehaviour
 
     public int AttackRange => characterData != null ? characterData.AttackRange : 0;
 
+    public IReadOnlyList<CardData> StartingDeck => characterData != null
+        ? characterData.StartingDeck
+        : Array.Empty<CardData>();
+
     // ===== RUNTIME VALUES =====
 
     public int CurrentHealth => currentHealth;
@@ -30,8 +36,6 @@ public class CharacterUnit : MonoBehaviour
     public bool IsDead => currentHealth <= 0;
 
     public int CurrentAttackRange => currentAttackRange;
-
-
 
     private void Awake()
     {
@@ -96,4 +100,3 @@ public class CharacterUnit : MonoBehaviour
         currentHealth = Mathf.Min(currentHealth, MaxHealth);
     }
 }
-

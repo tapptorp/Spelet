@@ -5120,10 +5120,43 @@ MonoBehaviour:
   playerOneStartPosition: {x: -2, y: 0}
   playerTwoStartPosition: {x: -3, y: 5}
   actionsPerTurn: 2
+  playerOneStartingDeck:
+  - {fileID: 11400000, guid: 3c8ddb9885bf7a848bb599c2008857d2, type: 2}
+  - {fileID: 11400000, guid: 3c8ddb9885bf7a848bb599c2008857d2, type: 2}
+  - {fileID: 11400000, guid: 3c8ddb9885bf7a848bb599c2008857d2, type: 2}
+  - {fileID: 11400000, guid: 52b204724a6dc544f81e5069d56bbf3b, type: 2}
+  - {fileID: 11400000, guid: 52b204724a6dc544f81e5069d56bbf3b, type: 2}
+  - {fileID: 11400000, guid: 52b204724a6dc544f81e5069d56bbf3b, type: 2}
+  - {fileID: 11400000, guid: 2f4e8c47cbb9c954e9d5349cdc13840c, type: 2}
+  - {fileID: 11400000, guid: 2f4e8c47cbb9c954e9d5349cdc13840c, type: 2}
+  playerTwoStartingDeck:
+  - {fileID: 11400000, guid: 3c8ddb9885bf7a848bb599c2008857d2, type: 2}
+  - {fileID: 11400000, guid: 3c8ddb9885bf7a848bb599c2008857d2, type: 2}
+  - {fileID: 11400000, guid: 3c8ddb9885bf7a848bb599c2008857d2, type: 2}
+  - {fileID: 11400000, guid: 52b204724a6dc544f81e5069d56bbf3b, type: 2}
+  - {fileID: 11400000, guid: 52b204724a6dc544f81e5069d56bbf3b, type: 2}
+  - {fileID: 11400000, guid: 52b204724a6dc544f81e5069d56bbf3b, type: 2}
+  - {fileID: 11400000, guid: 2f4e8c47cbb9c954e9d5349cdc13840c, type: 2}
+  - {fileID: 11400000, guid: 2f4e8c47cbb9c954e9d5349cdc13840c, type: 2}
   basicAttackDamage: 1
   activePlayer: 0
-  actionsRemainingThisTurn: 0
   isGameOver: 0
+  playerOne:
+    playerName: 
+    unit: {fileID: 0}
+    actionsRemaining: 0
+    deck:
+      drawPile: []
+      hand: []
+      discardPile: []
+  playerTwo:
+    playerName: 
+    unit: {fileID: 0}
+    actionsRemaining: 0
+    deck:
+      drawPile: []
+      hand: []
+      discardPile: []
 --- !u!1 &1813224619
 GameObject:
   m_ObjectHideFlags: 0

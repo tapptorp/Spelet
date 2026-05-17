@@ -16,3 +16,14 @@ MonoBehaviour:
   maxHealth: 15
   movement: 3
   attackRange: 2
+  startingDeck:
+  - {fileID: 11400000, guid: c3ab7a00201dd0b4cb2d0bde802a16c6, type: 2}
+  - {fileID: 11400000, guid: c3ab7a00201dd0b4cb2d0bde802a16c6, type: 2}
+  - {fileID: 11400000, guid: c3ab7a00201dd0b4cb2d0bde802a16c6, type: 2}
+  - {fileID: 11400000, guid: 2f4e8c47cbb9c954e9d5349cdc13840c, type: 2}
+  - {fileID: 11400000, guid: 2f4e8c47cbb9c954e9d5349cdc13840c, type: 2}
+  - {fileID: 11400000, guid: fd5d8896ec210be41ae342dc25857832, type: 2}
+  - {fileID: 11400000, guid: fd5d8896ec210be41ae342dc25857832, type: 2}
+  - {fileID: 11400000, guid: 52b204724a6dc544f81e5069d56bbf3b, type: 2}
+  - {fileID: 11400000, guid: 52b204724a6dc544f81e5069d56bbf3b, type: 2}
+  - {fileID: 11400000, guid: 52b204724a6dc544f81e5069d56bbf3b, type: 2}
