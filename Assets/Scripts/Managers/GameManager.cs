@@ -26,23 +26,35 @@ public class GameManager : MonoBehaviour
 
     [Header("Runtime State")]
     [SerializeField] private PlayerTurn activePlayer = PlayerTurn.PlayerOne;
-    [SerializeField] private int actionsRemainingThisTurn;
     [SerializeField] private bool isGameOver;
+
+    [Header("Player States")]
+    [SerializeField] private PlayerState playerOne;
+    [SerializeField] private PlayerState playerTwo;
+
+    public PlayerState PlayerOne => playerOne;
+    public PlayerState PlayerTwo => playerTwo;
 
     public CharacterUnit PlayerOneUnit => playerOneUnit;
     public CharacterUnit PlayerTwoUnit => playerTwoUnit;
 
     public PlayerTurn ActivePlayer => activePlayer;
 
-    public CharacterUnit ActiveUnit => activePlayer == PlayerTurn.PlayerOne
-        ? playerOneUnit
-        : playerTwoUnit;
+    public PlayerState ActivePlayerState => activePlayer == PlayerTurn.PlayerOne
+        ? playerOne
+        : playerTwo;
 
-    public CharacterUnit EnemyUnit => activePlayer == PlayerTurn.PlayerOne
-        ? playerTwoUnit
-        : playerOneUnit;
+    public PlayerState EnemyPlayerState => activePlayer == PlayerTurn.PlayerOne
+        ? playerTwo
+        : playerOne;
 
-    public int ActionsRemainingThisTurn => actionsRemainingThisTurn;
+    public CharacterUnit ActiveUnit => ActivePlayerState?.Unit;
+    public CharacterUnit EnemyUnit => EnemyPlayerState?.Unit;
+
+    public int ActionsRemainingThisTurn => ActivePlayerState != null
+        ? ActivePlayerState.ActionsRemaining
+        : 0;
+
     public bool IsGameOver => isGameOver;
 
     private void Awake()
@@ -157,6 +169,9 @@ public class GameManager : MonoBehaviour
             return;
         }
 
+        playerOne = new PlayerState("Player One", playerOneUnit);
+        playerTwo = new PlayerState("Player Two", playerTwoUnit);
+
         activePlayer = PlayerTurn.PlayerOne;
         isGameOver = false;
 
@@ -190,9 +205,9 @@ public class GameManager : MonoBehaviour
             return;
         }
 
-        actionsRemainingThisTurn = actionsPerTurn;
+        ActivePlayerState.StartTurn(actionsPerTurn);
 
-        Debug.Log($"Starting turn for {activePlayer}. Active unit: {ActiveUnit.CharacterName}. Actions: {actionsRemainingThisTurn}");
+        Debug.Log($"Starting turn for {ActivePlayerState.PlayerName}. Active unit: {ActiveUnit.CharacterName}. Actions: {ActivePlayerState.ActionsRemaining}");
     }
 
     private void SwitchTurn()
@@ -211,9 +226,9 @@ public class GameManager : MonoBehaviour
 
     private void ConsumeAction()
     {
-        actionsRemainingThisTurn--;
+        ActivePlayerState.ConsumeAction();
 
-        if (actionsRemainingThisTurn <= 0)
+        if (!ActivePlayerState.HasActionsRemaining)
         {
             Debug.Log($"{ActiveUnit.CharacterName} has used all actions.");
             SwitchTurn();
@@ -270,7 +285,12 @@ public class GameManager : MonoBehaviour
             return "Cannot move. Game is over.";
         }
 
-        if (actionsRemainingThisTurn <= 0)
+        if (ActivePlayerState == null)
+        {
+            return "Cannot move. Active player state is missing.";
+        }
+
+        if (!ActivePlayerState.HasActionsRemaining)
         {
             return $"{ActiveUnit.CharacterName} has no actions left.";
         }
@@ -286,7 +306,13 @@ public class GameManager : MonoBehaviour
             return false;
         }
 
-        if (actionsRemainingThisTurn <= 0)
+        if (ActivePlayerState == null)
+        {
+            Debug.LogWarning("Cannot attack. Active player state is missing.");
+            return false;
+        }
+
+        if (!ActivePlayerState.HasActionsRemaining)
         {
             Debug.Log($"{ActiveUnit.CharacterName} has no actions left.");
             return false;
@@ -331,14 +357,14 @@ public class GameManager : MonoBehaviour
 
     private void CheckGameOver()
     {
-        if (playerOneUnit.IsDead)
+        if (playerOne.Unit.IsDead)
         {
             isGameOver = true;
             Debug.Log("Game over. Player Two wins!");
             return;
         }
 
-        if (playerTwoUnit.IsDead)
+        if (playerTwo.Unit.IsDead)
         {
             isGameOver = true;
             Debug.Log("Game over. Player One wins!");
