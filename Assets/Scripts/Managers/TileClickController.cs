@@ -6,6 +6,7 @@ public class TileClickController : MonoBehaviour
 {
     [Header("References")]
     [SerializeField] private GameManager gameManager;
+    [SerializeField] private UIManager uiManager;
     [SerializeField] private Camera mainCamera;
 
     [Header("Raycast Settings")]
@@ -21,6 +22,13 @@ public class TileClickController : MonoBehaviour
         {
             gameManager = FindAnyObjectByType<GameManager>();
         }
+
+        if (uiManager == null)
+        {
+            uiManager = FindAnyObjectByType<UIManager>();
+        }
+
+
 
         if (mainCamera == null)
         {
@@ -43,9 +51,15 @@ public class TileClickController : MonoBehaviour
 
     private void HandleLeftMouseClick()
     {
+
         if (ignoreClicksOverUI && EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
         {
             return;
+        }
+
+        if (uiManager != null)
+        {
+            uiManager.ClearSelectedCardInfo();
         }
 
         if (gameManager == null)

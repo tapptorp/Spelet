@@ -323,6 +323,60 @@ public class GameManager : MonoBehaviour
         return true;
     }
 
+    public bool SelectCardFromActiveHand(CardData selectedCard)
+    {
+        if (isGameOver)
+        {
+            Debug.Log("Cannot select card. Game is over.");
+            return false;
+        }
+
+        if (selectedCard == null)
+        {
+            Debug.LogWarning("Cannot select a null card.");
+            return false;
+        }
+
+        if (ActivePlayerState == null || ActivePlayerState.Deck == null)
+        {
+            Debug.LogWarning("Cannot select card. Active player or deck is missing.");
+            return false;
+        }
+
+        if (!IsCardInActivePlayerHand(selectedCard))
+        {
+            Debug.LogWarning($"{selectedCard.CardName} is not in {ActivePlayerState.PlayerName}'s hand.");
+            return false;
+        }
+
+        Debug.Log(
+            $"{ActivePlayerState.PlayerName} selected card: " +
+            $"{selectedCard.CardName} ({selectedCard.CardType}, value {selectedCard.Value})"
+        );
+
+        // For now, selecting a card only logs the selection.
+        // It does not consume an action, discard the card, or start combat yet.
+        return true;
+    }
+
+    private bool IsCardInActivePlayerHand(CardData card)
+    {
+        if (card == null || ActivePlayerState == null || ActivePlayerState.Deck == null)
+        {
+            return false;
+        }
+
+        foreach (CardData handCard in ActivePlayerState.Deck.Hand)
+        {
+            if (handCard == card)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public bool CanActiveUnitMoveToTile(Tile targetTile)
     {
         return GetActiveUnitManeuverValidationError(targetTile) == null;
