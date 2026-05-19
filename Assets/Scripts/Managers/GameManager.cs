@@ -6,6 +6,14 @@ public enum PlayerTurn
     PlayerTwo
 }
 
+public enum GameInputState
+{
+    WaitingForActivePlayerAction,
+    SelectingAttackTarget,
+    DefenderChoosingDefense,
+    GameOver
+}
+
 public class GameManager : MonoBehaviour
 {
     [Header("References")]
@@ -27,10 +35,13 @@ public class GameManager : MonoBehaviour
     [Header("Runtime State")]
     [SerializeField] private PlayerTurn activePlayer = PlayerTurn.PlayerOne;
     [SerializeField] private bool isGameOver;
+    [SerializeField] private GameInputState inputState = GameInputState.WaitingForActivePlayerAction;
 
     [Header("Player States")]
     [SerializeField] private PlayerState playerOne;
     [SerializeField] private PlayerState playerTwo;
+
+    private CardData selectedAttackCard;
 
     public PlayerState PlayerOne => playerOne;
     public PlayerState PlayerTwo => playerTwo;
@@ -39,6 +50,8 @@ public class GameManager : MonoBehaviour
     public CharacterUnit PlayerTwoUnit => playerTwoUnit;
 
     public PlayerTurn ActivePlayer => activePlayer;
+    public GameInputState InputState => inputState;
+    public bool IsGameOver => isGameOver;
 
     public PlayerState ActivePlayerState => activePlayer == PlayerTurn.PlayerOne
         ? playerOne
@@ -51,13 +64,30 @@ public class GameManager : MonoBehaviour
     public CharacterUnit ActiveUnit => ActivePlayerState?.Unit;
     public CharacterUnit EnemyUnit => EnemyPlayerState?.Unit;
 
+    public CardData SelectedAttackCard => selectedAttackCard;
+
     public int ActionsRemainingThisTurn => ActivePlayerState != null
         ? ActivePlayerState.ActionsRemaining
         : 0;
 
-    public bool IsGameOver => isGameOver;
-
     private void Awake()
+    {
+        FindMissingReferences();
+    }
+
+    private void Start()
+    {
+        if (!ValidateSetup())
+        {
+            Debug.LogError("Game could not start because setup validation failed.");
+            enabled = false;
+            return;
+        }
+
+        StartGame();
+    }
+
+    private void FindMissingReferences()
     {
         if (boardManager == null)
         {
@@ -76,18 +106,6 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    private void Start()
-    {
-        if (!ValidateSetup())
-        {
-            Debug.LogError("Game could not start because setup validation failed.");
-            enabled = false;
-            return;
-        }
-
-        StartGame();
-    }
-
     private bool ValidateSetup()
     {
         bool isValid = true;
@@ -104,27 +122,8 @@ public class GameManager : MonoBehaviour
             isValid = false;
         }
 
-        if (playerOneUnit == null)
-        {
-            Debug.LogError("GameManager setup error: Player One Unit is missing.");
-            isValid = false;
-        }
-        else if (!playerOneUnit.HasCharacterData)
-        {
-            Debug.LogError("GameManager setup error: Player One Unit is missing CharacterData.");
-            isValid = false;
-        }
-
-        if (playerTwoUnit == null)
-        {
-            Debug.LogError("GameManager setup error: Player Two Unit is missing.");
-            isValid = false;
-        }
-        else if (!playerTwoUnit.HasCharacterData)
-        {
-            Debug.LogError("GameManager setup error: Player Two Unit is missing CharacterData.");
-            isValid = false;
-        }
+        ValidateUnitSetup(playerOneUnit, "Player One", ref isValid);
+        ValidateUnitSetup(playerTwoUnit, "Player Two", ref isValid);
 
         if (boardManager != null)
         {
@@ -136,16 +135,19 @@ public class GameManager : MonoBehaviour
         return isValid;
     }
 
-    private void ValidateCharacterDecks()
+    private void ValidateUnitSetup(CharacterUnit unit, string playerLabel, ref bool isValid)
     {
-        if (playerOneUnit != null && playerOneUnit.StartingDeck.Count == 0)
+        if (unit == null)
         {
-            Debug.LogWarning($"{playerOneUnit.CharacterName} has an empty starting deck. This is okay for now, but Maneuver will not be able to draw cards.");
+            Debug.LogError($"GameManager setup error: {playerLabel} Unit is missing.");
+            isValid = false;
+            return;
         }
 
-        if (playerTwoUnit != null && playerTwoUnit.StartingDeck.Count == 0)
+        if (!unit.HasCharacterData)
         {
-            Debug.LogWarning($"{playerTwoUnit.CharacterName} has an empty starting deck. This is okay for now, but Maneuver will not be able to draw cards.");
+            Debug.LogError($"GameManager setup error: {playerLabel} Unit is missing CharacterData.");
+            isValid = false;
         }
     }
 
@@ -173,6 +175,19 @@ public class GameManager : MonoBehaviour
         }
     }
 
+    private void ValidateCharacterDecks()
+    {
+        if (playerOneUnit != null && playerOneUnit.StartingDeck.Count == 0)
+        {
+            Debug.LogWarning($"{playerOneUnit.CharacterName} has an empty starting deck. This is okay for now, but Maneuver will not be able to draw cards.");
+        }
+
+        if (playerTwoUnit != null && playerTwoUnit.StartingDeck.Count == 0)
+        {
+            Debug.LogWarning($"{playerTwoUnit.CharacterName} has an empty starting deck. This is okay for now, but Maneuver will not be able to draw cards.");
+        }
+    }
+
     private void StartGame()
     {
         bool playerOnePlaced = PlaceUnitAtStartPosition(playerOneUnit, playerOneStartPosition);
@@ -192,6 +207,8 @@ public class GameManager : MonoBehaviour
 
         activePlayer = PlayerTurn.PlayerOne;
         isGameOver = false;
+        inputState = GameInputState.WaitingForActivePlayerAction;
+        selectedAttackCard = null;
 
         StartTurn();
     }
@@ -225,6 +242,9 @@ public class GameManager : MonoBehaviour
 
         ActivePlayerState.StartTurn(actionsPerTurn);
 
+        inputState = GameInputState.WaitingForActivePlayerAction;
+        selectedAttackCard = null;
+
         Debug.Log($"Starting turn for {ActivePlayerState.PlayerName}. Active unit: {ActiveUnit.CharacterName}. Actions: {ActivePlayerState.ActionsRemaining}");
     }
 
@@ -251,6 +271,108 @@ public class GameManager : MonoBehaviour
             Debug.Log($"{ActiveUnit.CharacterName} has used all actions.");
             SwitchTurn();
         }
+    }
+
+    public bool HandleTileClicked(Tile clickedTile)
+    {
+        if (clickedTile == null)
+        {
+            Debug.LogWarning("Cannot handle tile click. Clicked tile is null.");
+            return false;
+        }
+
+        if (isGameOver)
+        {
+            Debug.Log("Cannot handle tile click. Game is over.");
+            return false;
+        }
+
+        switch (inputState)
+        {
+            case GameInputState.WaitingForActivePlayerAction:
+                return TryManeuverActiveUnitToTile(clickedTile);
+
+            case GameInputState.SelectingAttackTarget:
+                return TrySelectAttackTarget(clickedTile);
+
+            case GameInputState.DefenderChoosingDefense:
+                Debug.Log("Cannot handle tile click. Waiting for defender to choose a defense card.");
+                return false;
+
+            case GameInputState.GameOver:
+                Debug.Log("Cannot handle tile click. Game is over.");
+                return false;
+
+            default:
+                Debug.Log($"Unhandled input state: {inputState}");
+                return false;
+        }
+    }
+
+    public bool HandleCharacterClicked(CharacterUnit clickedUnit)
+    {
+        if (clickedUnit == null)
+        {
+            Debug.LogWarning("Cannot handle character click. Clicked unit is null.");
+            return false;
+        }
+
+        if (isGameOver)
+        {
+            Debug.Log("Cannot handle character click. Game is over.");
+            return false;
+        }
+
+        switch (inputState)
+        {
+            case GameInputState.SelectingAttackTarget:
+                return TrySelectAttackTarget(clickedUnit);
+
+            case GameInputState.WaitingForActivePlayerAction:
+                return HandleCharacterClickedDuringNormalAction(clickedUnit);
+
+            case GameInputState.DefenderChoosingDefense:
+                Debug.Log("Cannot handle character click. Waiting for defender to choose a defense card.");
+                return false;
+
+            case GameInputState.GameOver:
+                Debug.Log("Cannot handle character click. Game is over.");
+                return false;
+
+            default:
+                Debug.Log($"Unhandled input state: {inputState}");
+                return false;
+        }
+    }
+
+    private bool HandleCharacterClickedDuringNormalAction(CharacterUnit clickedUnit)
+    {
+        // During normal action state, clicking a character behaves like clicking its tile.
+        // This is useful if the unit visually blocks the tile collider.
+        if (clickedUnit.CurrentTile == null)
+        {
+            Debug.LogWarning($"{clickedUnit.CharacterName} has no current tile.");
+            return false;
+        }
+
+        return HandleTileClicked(clickedUnit.CurrentTile);
+    }
+
+    public void CancelCurrentSelection()
+    {
+        if (inputState != GameInputState.SelectingAttackTarget)
+        {
+            return;
+        }
+
+        string cardName = selectedAttackCard != null
+            ? selectedAttackCard.CardName
+            : "unknown card";
+
+        Debug.Log($"Cancelled attack with {cardName}.");
+
+        selectedAttackCard = null;
+        inputState = GameInputState.WaitingForActivePlayerAction;
     }
 
     public bool TryMoveActiveUnitToPosition(Vector2Int targetPosition)
@@ -292,9 +414,6 @@ public class GameManager : MonoBehaviour
             return false;
         }
 
-        // Important:
-        // The target has been validated before drawing a card.
-        // This prevents accidental invalid clicks from drawing cards.
         CardData drawnCard = ActivePlayerState.Deck.DrawCard();
 
         if (drawnCard != null)
@@ -323,63 +442,9 @@ public class GameManager : MonoBehaviour
         return true;
     }
 
-    public bool SelectCardFromActiveHand(CardData selectedCard)
-    {
-        if (isGameOver)
-        {
-            Debug.Log("Cannot select card. Game is over.");
-            return false;
-        }
-
-        if (selectedCard == null)
-        {
-            Debug.LogWarning("Cannot select a null card.");
-            return false;
-        }
-
-        if (ActivePlayerState == null || ActivePlayerState.Deck == null)
-        {
-            Debug.LogWarning("Cannot select card. Active player or deck is missing.");
-            return false;
-        }
-
-        if (!IsCardInActivePlayerHand(selectedCard))
-        {
-            Debug.LogWarning($"{selectedCard.CardName} is not in {ActivePlayerState.PlayerName}'s hand.");
-            return false;
-        }
-
-        Debug.Log(
-            $"{ActivePlayerState.PlayerName} selected card: " +
-            $"{selectedCard.CardName} ({selectedCard.CardType}, value {selectedCard.Value})"
-        );
-
-        // For now, selecting a card only logs the selection.
-        // It does not consume an action, discard the card, or start combat yet.
-        return true;
-    }
-
-    private bool IsCardInActivePlayerHand(CardData card)
-    {
-        if (card == null || ActivePlayerState == null || ActivePlayerState.Deck == null)
-        {
-            return false;
-        }
-
-        foreach (CardData handCard in ActivePlayerState.Deck.Hand)
-        {
-            if (handCard == card)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     public bool CanActiveUnitMoveToTile(Tile targetTile)
     {
-        return GetActiveUnitManeuverValidationError(targetTile) == null;
+        return CanActiveUnitManeuverToTile(targetTile);
     }
 
     public bool CanActiveUnitManeuverToTile(Tile targetTile)
@@ -392,6 +457,11 @@ public class GameManager : MonoBehaviour
         if (isGameOver)
         {
             return "Cannot maneuver. Game is over.";
+        }
+
+        if (inputState != GameInputState.WaitingForActivePlayerAction)
+        {
+            return $"Cannot maneuver right now. Current input state is {inputState}.";
         }
 
         if (ActivePlayerState == null)
@@ -417,11 +487,250 @@ public class GameManager : MonoBehaviour
         return movementManager.GetMoveValidationError(ActiveUnit, targetTile);
     }
 
+    public bool SelectCardFromActiveHand(CardData selectedCard)
+    {
+        if (!CanSelectCardFromActiveHand(selectedCard))
+        {
+            return false;
+        }
+
+        if (IsCurrentlySelectingThisAttackCard(selectedCard))
+        {
+            CancelCurrentSelection();
+            return false;
+        }
+
+        if (!CanUseCardAsAttack(selectedCard))
+        {
+            Debug.Log($"{selectedCard.CardName} cannot be used as an attack card right now.");
+            return false;
+        }
+
+        selectedAttackCard = selectedCard;
+        inputState = GameInputState.SelectingAttackTarget;
+
+        Debug.Log($"{ActivePlayerState.PlayerName} selected attack card {selectedCard.CardName}. Choose an enemy target.");
+
+        return true;
+    }
+
+    private bool CanSelectCardFromActiveHand(CardData selectedCard)
+    {
+        if (isGameOver)
+        {
+            Debug.Log("Cannot select card. Game is over.");
+            return false;
+        }
+
+        if (selectedCard == null)
+        {
+            Debug.LogWarning("Cannot select a null card.");
+            return false;
+        }
+
+        if (ActivePlayerState == null || ActivePlayerState.Deck == null)
+        {
+            Debug.LogWarning("Cannot select card. Active player or deck is missing.");
+            return false;
+        }
+
+        if (!IsCardInActivePlayerHand(selectedCard))
+        {
+            Debug.LogWarning($"{selectedCard.CardName} is not in {ActivePlayerState.PlayerName}'s hand.");
+            return false;
+        }
+
+        if (IsCurrentlySelectingThisAttackCard(selectedCard))
+        {
+            return true;
+        }
+
+        if (!ActivePlayerState.HasActionsRemaining)
+        {
+            Debug.Log($"{ActiveUnit.CharacterName} has no actions left.");
+            return false;
+        }
+
+        if (inputState != GameInputState.WaitingForActivePlayerAction)
+        {
+            Debug.Log($"Cannot select a new card right now. Current input state is {inputState}.");
+            return false;
+        }
+
+        return true;
+    }
+
+    public bool IsCurrentlySelectingThisAttackCard(CardData card)
+    {
+        return inputState == GameInputState.SelectingAttackTarget &&
+               selectedAttackCard == card;
+    }
+
+    private bool IsCardInActivePlayerHand(CardData card)
+    {
+        if (card == null || ActivePlayerState == null || ActivePlayerState.Deck == null)
+        {
+            return false;
+        }
+
+        foreach (CardData handCard in ActivePlayerState.Deck.Hand)
+        {
+            if (handCard == card)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool CanUseCardAsAttack(CardData card)
+    {
+        return card != null &&
+               (card.CardType == CardType.Attack || card.CardType == CardType.Versatile);
+    }
+
+    private bool TrySelectAttackTarget(Tile targetTile)
+    {
+        if (targetTile == null)
+        {
+            Debug.LogWarning("Cannot select attack target. Target tile is null.");
+            return false;
+        }
+
+        if (targetTile.OccupyingUnit == null)
+        {
+            Debug.Log("Attack target must be an enemy character.");
+            return false;
+        }
+
+        return TrySelectAttackTarget(targetTile.OccupyingUnit);
+    }
+
+    private bool TrySelectAttackTarget(CharacterUnit targetUnit)
+    {
+        string validationError = GetAttackTargetValidationError(targetUnit);
+
+        if (validationError != null)
+        {
+            Debug.Log(validationError);
+            return false;
+        }
+
+        return ResolveAttackWithoutDefenseForNow(targetUnit);
+    }
+
+    private string GetAttackTargetValidationError(CharacterUnit targetUnit)
+    {
+        if (selectedAttackCard == null)
+        {
+            inputState = GameInputState.WaitingForActivePlayerAction;
+            return "Cannot select attack target. No attack card is selected.";
+        }
+
+        if (targetUnit == null)
+        {
+            return "Cannot select attack target. Target unit is null.";
+        }
+
+        if (targetUnit == ActiveUnit)
+        {
+            return "You cannot attack your own active unit.";
+        }
+
+        if (targetUnit != EnemyUnit)
+        {
+            return "For now, you can only attack the enemy unit.";
+        }
+
+        if (targetUnit.CurrentTile == null)
+        {
+            return $"{targetUnit.CharacterName} has no current tile.";
+        }
+
+        if (!IsUnitInActiveUnitAttackRange(targetUnit))
+        {
+            return $"{targetUnit.CharacterName} is out of range.";
+        }
+
+        return null;
+    }
+
+    private bool ResolveAttackWithoutDefenseForNow(CharacterUnit targetUnit)
+    {
+        if (targetUnit == null)
+        {
+            Debug.LogWarning("Cannot resolve attack. Target unit is null.");
+            return false;
+        }
+
+        if (selectedAttackCard == null)
+        {
+            Debug.LogWarning("Cannot resolve attack. No attack card is selected.");
+            return false;
+        }
+
+        CardData attackCard = selectedAttackCard;
+
+        bool removedFromHand = ActivePlayerState.Deck.RemoveCardFromHand(attackCard);
+
+        if (!removedFromHand)
+        {
+            Debug.LogWarning($"Could not play {attackCard.CardName}. It was not found in hand.");
+            return false;
+        }
+
+        ActivePlayerState.Deck.AddCardToDiscardPile(attackCard);
+
+        targetUnit.TakeDamage(attackCard.Value);
+
+        Debug.Log(
+            $"{ActiveUnit.CharacterName} attacked {targetUnit.CharacterName} with {attackCard.CardName} " +
+            $"for {attackCard.Value} damage. Defense is not implemented yet."
+        );
+
+        selectedAttackCard = null;
+
+        CheckGameOver();
+
+        if (isGameOver)
+        {
+            return true;
+        }
+
+        inputState = GameInputState.WaitingForActivePlayerAction;
+        ConsumeAction();
+
+        return true;
+    }
+
+    private bool IsUnitInActiveUnitAttackRange(CharacterUnit targetUnit)
+    {
+        if (ActiveUnit == null || ActiveUnit.CurrentTile == null || targetUnit == null || targetUnit.CurrentTile == null)
+        {
+            return false;
+        }
+
+        Vector2Int activePosition = ActiveUnit.CurrentTile.GridPosition;
+        Vector2Int targetPosition = targetUnit.CurrentTile.GridPosition;
+
+        int distance = Mathf.Abs(activePosition.x - targetPosition.x) +
+                       Mathf.Abs(activePosition.y - targetPosition.y);
+
+        return distance <= ActiveUnit.CurrentAttackRange;
+    }
+
     public bool TryBasicAttack()
     {
         if (isGameOver)
         {
             Debug.Log("Cannot attack. Game is over.");
+            return false;
+        }
+
+        if (inputState != GameInputState.WaitingForActivePlayerAction)
+        {
+            Debug.Log($"Cannot basic attack right now. Current input state is {inputState}.");
             return false;
         }
 
@@ -465,28 +774,29 @@ public class GameManager : MonoBehaviour
 
     private bool IsEnemyInRange()
     {
-        Vector2Int activePosition = ActiveUnit.CurrentTile.GridPosition;
-        Vector2Int enemyPosition = EnemyUnit.CurrentTile.GridPosition;
-
-        int distance = Mathf.Abs(activePosition.x - enemyPosition.x) +
-                       Mathf.Abs(activePosition.y - enemyPosition.y);
-
-        return distance <= ActiveUnit.CurrentAttackRange;
+        return IsUnitInActiveUnitAttackRange(EnemyUnit);
     }
 
     private void CheckGameOver()
     {
         if (playerOne.Unit.IsDead)
         {
-            isGameOver = true;
-            Debug.Log("Game over. Player Two wins!");
+            EndGame("Player Two");
             return;
         }
 
         if (playerTwo.Unit.IsDead)
         {
-            isGameOver = true;
-            Debug.Log("Game over. Player One wins!");
+            EndGame("Player One");
         }
+    }
+
+    private void EndGame(string winningPlayerName)
+    {
+        isGameOver = true;
+        inputState = GameInputState.GameOver;
+        selectedAttackCard = null;
+
+        Debug.Log($"Game over. {winningPlayerName} wins!");
     }
 }

@@ -5405,6 +5405,7 @@ MonoBehaviour:
   basicAttackDamage: 1
   activePlayer: 0
   isGameOver: 0
+  inputState: 0
   playerOne:
     playerName: 
     unit: {fileID: 0}

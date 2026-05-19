@@ -47,6 +47,14 @@ public class TileClickController : MonoBehaviour
         {
             HandleLeftMouseClick();
         }
+        if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
+        {
+            if (gameManager != null)
+            {
+                gameManager.CancelCurrentSelection();
+            }
+        }
+
     }
 
     private void HandleLeftMouseClick()
@@ -83,14 +91,23 @@ public class TileClickController : MonoBehaviour
             return;
         }
 
+
+        CharacterUnit clickedUnit = hit.collider.GetComponentInParent<CharacterUnit>();
+
+        if (clickedUnit != null)
+        {
+            gameManager.HandleCharacterClicked(clickedUnit);
+            return;
+        }
+
         Tile clickedTile = hit.collider.GetComponentInParent<Tile>();
 
         if (clickedTile == null)
         {
-            Debug.Log($"Clicked {hit.collider.gameObject.name}, but it was not a tile.");
+            Debug.Log($"Clicked {hit.collider.gameObject.name}, but it was not a tile or character.");
             return;
         }
 
-        gameManager.TryMoveActiveUnitToTile(clickedTile);
+        gameManager.HandleTileClicked(clickedTile);
+        }
     }
-}
