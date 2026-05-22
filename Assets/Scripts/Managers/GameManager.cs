@@ -19,6 +19,7 @@ public class GameManager : MonoBehaviour
     [Header("References")]
     [SerializeField] private BoardManager boardManager;
     [SerializeField] private MovementManager movementManager;
+    [SerializeField] private CombatManager combatManager;
     [SerializeField] private CharacterUnit playerOneUnit;
     [SerializeField] private CharacterUnit playerTwoUnit;
 
@@ -41,13 +42,6 @@ public class GameManager : MonoBehaviour
     [SerializeField] private PlayerState playerOne;
     [SerializeField] private PlayerState playerTwo;
 
-    private CardData selectedAttackCard;
-
-    // Temporary combat state.
-    // Kept in GameManager for now. Later this can be moved to CombatManager.
-    private PlayerState defendingPlayerState;
-    private CharacterUnit pendingAttackTarget;
-
     public PlayerState PlayerOne => playerOne;
     public PlayerState PlayerTwo => playerTwo;
 
@@ -69,9 +63,13 @@ public class GameManager : MonoBehaviour
     public CharacterUnit ActiveUnit => ActivePlayerState?.Unit;
     public CharacterUnit EnemyUnit => EnemyPlayerState?.Unit;
 
-    public CardData SelectedAttackCard => selectedAttackCard;
+    public CardData SelectedAttackCard => combatManager != null
+        ? combatManager.SelectedAttackCard
+        : null;
 
-    public PlayerState DefendingPlayerState => defendingPlayerState;
+    public PlayerState DefendingPlayerState => combatManager != null
+        ? combatManager.DefendingPlayerState
+        : null;
 
     // Minimal local-play helper.
     // In online play this would probably be replaced by "show the local player's hand".
@@ -79,9 +77,9 @@ public class GameManager : MonoBehaviour
     {
         get
         {
-            if (inputState == GameInputState.DefenderChoosingDefense && defendingPlayerState != null)
+            if (inputState == GameInputState.DefenderChoosingDefense && DefendingPlayerState != null)
             {
-                return defendingPlayerState;
+                return DefendingPlayerState;
             }
 
             return ActivePlayerState;
@@ -126,6 +124,17 @@ public class GameManager : MonoBehaviour
             movementManager = gameObject.AddComponent<MovementManager>();
             Debug.Log("GameManager created a MovementManager automatically.");
         }
+
+        if (combatManager == null)
+        {
+            combatManager = FindAnyObjectByType<CombatManager>();
+        }
+
+        if (combatManager == null)
+        {
+            combatManager = gameObject.AddComponent<CombatManager>();
+            Debug.Log("GameManager created a CombatManager automatically.");
+        }
     }
 
     private bool ValidateSetup()
@@ -141,6 +150,12 @@ public class GameManager : MonoBehaviour
         if (movementManager == null)
         {
             Debug.LogError("GameManager setup error: MovementManager is missing.");
+            isValid = false;
+        }
+
+        if (combatManager == null)
+        {
+            Debug.LogError("GameManager setup error: CombatManager is missing.");
             isValid = false;
         }
 
@@ -230,7 +245,7 @@ public class GameManager : MonoBehaviour
         activePlayer = PlayerTurn.PlayerOne;
         isGameOver = false;
         inputState = GameInputState.WaitingForActivePlayerAction;
-        selectedAttackCard = null;
+        ClearCombatState();
 
         StartTurn();
     }
@@ -387,8 +402,8 @@ public class GameManager : MonoBehaviour
             return;
         }
 
-        string cardName = selectedAttackCard != null
-            ? selectedAttackCard.CardName
+        string cardName = SelectedAttackCard != null
+            ? SelectedAttackCard.CardName
             : "unknown card";
 
         Debug.Log($"Cancelled attack with {cardName}.");
@@ -538,10 +553,14 @@ public class GameManager : MonoBehaviour
             return false;
         }
 
-        selectedAttackCard = selectedCard;
-        inputState = GameInputState.SelectingAttackTarget;
+        bool attackSelectionStarted = combatManager.BeginAttackSelection(ActivePlayerState, selectedCard);
 
-        Debug.Log($"{ActivePlayerState.PlayerName} selected attack card {selectedCard.CardName}. Choose an enemy target.");
+        if (!attackSelectionStarted)
+        {
+            return false;
+        }
+
+        inputState = GameInputState.SelectingAttackTarget;
 
         return true;
     }
@@ -595,7 +614,8 @@ public class GameManager : MonoBehaviour
     public bool IsCurrentlySelectingThisAttackCard(CardData card)
     {
         return inputState == GameInputState.SelectingAttackTarget &&
-               selectedAttackCard == card;
+               combatManager != null &&
+               combatManager.IsCurrentlySelectingThisAttackCard(card);
     }
 
     private bool IsCardInActivePlayerHand(CardData card)
@@ -623,14 +643,7 @@ public class GameManager : MonoBehaviour
 
     private bool CanUseCardAsAttack(CardData card)
     {
-        return card != null &&
-               (card.CardType == CardType.Attack || card.CardType == CardType.Versatile);
-    }
-
-    private bool CanUseCardAsDefense(CardData card)
-    {
-        return card != null &&
-               (card.CardType == CardType.Defense || card.CardType == CardType.Versatile);
+        return combatManager != null && combatManager.CanUseCardAsAttack(card);
     }
 
     private bool TrySelectAttackTarget(Tile targetTile)
@@ -665,7 +678,7 @@ public class GameManager : MonoBehaviour
 
     private string GetAttackTargetValidationError(CharacterUnit targetUnit)
     {
-        if (selectedAttackCard == null)
+        if (SelectedAttackCard == null)
         {
             inputState = GameInputState.WaitingForActivePlayerAction;
             return "Cannot select attack target. No attack card is selected.";
@@ -701,28 +714,14 @@ public class GameManager : MonoBehaviour
 
     private bool BeginDefenseResponse(CharacterUnit targetUnit)
     {
-        if (selectedAttackCard == null)
+        bool defenseResponseStarted = combatManager.BeginDefenseResponse(EnemyPlayerState, targetUnit);
+
+        if (!defenseResponseStarted)
         {
-            Debug.LogWarning("Cannot begin defense response. No attack card is selected.");
             return false;
         }
 
-        if (targetUnit == null)
-        {
-            Debug.LogWarning("Cannot begin defense response. Target unit is null.");
-            return false;
-        }
-
-        pendingAttackTarget = targetUnit;
-        defendingPlayerState = EnemyPlayerState;
         inputState = GameInputState.DefenderChoosingDefense;
-
-        Debug.Log(
-            $"{defendingPlayerState.PlayerName} is being attacked. " +
-            $"Choose a Defense/Versatile card, or press Space to skip defense. " +
-            $"The attack card is hidden until defense is chosen."
-        );
-
         return true;
     }
 
@@ -740,31 +739,14 @@ public class GameManager : MonoBehaviour
             return false;
         }
 
-        if (selectedCard == null)
+        bool resolved = combatManager.SelectDefenseCardFromDefenderHand(selectedCard, out CombatResolutionResult result);
+
+        if (!resolved)
         {
-            Debug.LogWarning("Cannot select a null defense card.");
             return false;
         }
 
-        if (defendingPlayerState == null || defendingPlayerState.Deck == null)
-        {
-            Debug.LogWarning("Cannot select defense card. Defending player or deck is missing.");
-            return false;
-        }
-
-        if (!IsCardInPlayerHand(defendingPlayerState, selectedCard))
-        {
-            Debug.LogWarning($"{selectedCard.CardName} is not in {defendingPlayerState.PlayerName}'s hand.");
-            return false;
-        }
-
-        if (!CanUseCardAsDefense(selectedCard))
-        {
-            Debug.Log($"{selectedCard.CardName} cannot be used as a defense card.");
-            return false;
-        }
-
-        return ResolveAttackWithDefense(selectedCard);
+        return FinishCombatResolution(result);
     }
 
     public bool SkipDefense()
@@ -781,75 +763,23 @@ public class GameManager : MonoBehaviour
             return false;
         }
 
-        return ResolveAttackWithDefense(null);
+        bool resolved = combatManager.SkipDefense(out CombatResolutionResult result);
+
+        if (!resolved)
+        {
+            return false;
+        }
+
+        return FinishCombatResolution(result);
     }
 
-    private bool ResolveAttackWithDefense(CardData defenseCard)
+    private bool FinishCombatResolution(CombatResolutionResult result)
     {
-        if (selectedAttackCard == null)
+        if (result == null)
         {
-            Debug.LogWarning("Cannot resolve combat. No attack card is selected.");
+            Debug.LogWarning("Cannot finish combat resolution. Combat result is missing.");
             return false;
         }
-
-        if (pendingAttackTarget == null)
-        {
-            Debug.LogWarning("Cannot resolve combat. No attack target is stored.");
-            return false;
-        }
-
-        if (defendingPlayerState == null)
-        {
-            Debug.LogWarning("Cannot resolve combat. Defending player is missing.");
-            return false;
-        }
-
-        CardData attackCard = selectedAttackCard;
-        PlayerState attackingPlayerState = ActivePlayerState;
-        CharacterUnit attacker = ActiveUnit;
-        CharacterUnit defender = pendingAttackTarget;
-
-        bool removedAttackCard = attackingPlayerState.Deck.RemoveCardFromHand(attackCard);
-
-        if (!removedAttackCard)
-        {
-            Debug.LogWarning($"Could not play {attackCard.CardName}. It was not found in attacker's hand.");
-            return false;
-        }
-
-        attackingPlayerState.Deck.AddCardToDiscardPile(attackCard);
-
-        int defenseValue = 0;
-
-        if (defenseCard != null)
-        {
-            bool removedDefenseCard = defendingPlayerState.Deck.RemoveCardFromHand(defenseCard);
-
-            if (!removedDefenseCard)
-            {
-                Debug.LogWarning($"Could not play {defenseCard.CardName}. It was not found in defender's hand.");
-                return false;
-            }
-
-            defendingPlayerState.Deck.AddCardToDiscardPile(defenseCard);
-            defenseValue = defenseCard.Value;
-        }
-
-        int damage = Mathf.Max(attackCard.Value - defenseValue, 0);
-
-        defender.TakeDamage(damage);
-
-        string defenseText = defenseCard != null
-            ? $"{defenseCard.CardName} ({defenseCard.Value})"
-            : "no defense";
-
-        Debug.Log(
-            $"Combat revealed: {attacker.CharacterName} attacked {defender.CharacterName} with " +
-            $"{attackCard.CardName} ({attackCard.Value}). Defender used {defenseText}. " +
-            $"Damage dealt: {damage}."
-        );
-
-        ClearCombatState();
 
         CheckGameOver();
 
@@ -939,9 +869,10 @@ public class GameManager : MonoBehaviour
 
     private void ClearCombatState()
     {
-        selectedAttackCard = null;
-        defendingPlayerState = null;
-        pendingAttackTarget = null;
+        if (combatManager != null)
+        {
+            combatManager.ClearCombatState();
+        }
     }
 
     private void CheckGameOver()
@@ -967,3 +898,5 @@ public class GameManager : MonoBehaviour
         Debug.Log($"Game over. {winningPlayerName} wins!");
     }
 }
+
+
