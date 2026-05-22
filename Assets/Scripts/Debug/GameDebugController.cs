@@ -50,9 +50,17 @@ public class GameDebugController : MonoBehaviour
             gameManager.TryBasicAttack();
         }
 
-        if (keyboard.spaceKey.wasPressedThisFrame)
+        /*if (keyboard.spaceKey.wasPressedThisFrame)
         {
             LogGameState();
+        }
+        */
+        if (Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame)
+        {
+            if (gameManager != null)
+            {
+                gameManager.SkipDefense();
+            }
         }
     }
 

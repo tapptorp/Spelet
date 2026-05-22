@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
+using System.Collections.Generic;
 
 public class TileClickController : MonoBehaviour
 {
@@ -62,6 +63,7 @@ public class TileClickController : MonoBehaviour
 
         if (ignoreClicksOverUI && EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
         {
+            //DebugUIUnderMouse(); //Vid debugging
             return;
         }
 
@@ -110,4 +112,37 @@ public class TileClickController : MonoBehaviour
 
         gameManager.HandleTileClicked(clickedTile);
         }
+
+    private void DebugUIUnderMouse()
+    {
+        if (EventSystem.current == null)
+        {
+            Debug.Log("No EventSystem found.");
+            return;
+        }
+
+        PointerEventData pointerData = new PointerEventData(EventSystem.current)
+        {
+            position = Mouse.current.position.ReadValue()
+        };
+
+        List<RaycastResult> results = new List<RaycastResult>();
+        EventSystem.current.RaycastAll(pointerData, results);
+
+        if (results.Count == 0)
+        {
+            Debug.Log("No UI under mouse.");
+            return;
+        }
+
+        Debug.Log("UI under mouse:");
+
+        foreach (RaycastResult result in results)
+        {
+            Debug.Log(
+                $"UI hit: {result.gameObject.name}, " +
+                $"parent: {(result.gameObject.transform.parent != null ? result.gameObject.transform.parent.name : "none")}"
+            );
+        }
     }
+}

@@ -110,13 +110,22 @@ public class UIManager : MonoBehaviour
             return;
         }
 
-        PlayerState activePlayerState = gameManager.ActivePlayerState;
+        PlayerState displayedHandOwner = gameManager.DisplayedHandOwner;
 
         if (activeHandTitleText != null)
         {
-            activeHandTitleText.text = activePlayerState != null
-                ? $"{activePlayerState.PlayerName} Hand"
-                : "Active Player Hand";
+            if (displayedHandOwner == null)
+            {
+                activeHandTitleText.text = "Hand";
+            }
+            else if (gameManager.InputState == GameInputState.DefenderChoosingDefense)
+            {
+                activeHandTitleText.text = $"{displayedHandOwner.PlayerName} Defense Hand";
+            }
+            else
+            {
+                activeHandTitleText.text = $"{displayedHandOwner.PlayerName} Hand";
+            }
         }
 
         if (activeHandButtonContainer == null || cardButtonPrefab == null)
@@ -124,7 +133,7 @@ public class UIManager : MonoBehaviour
             return;
         }
 
-        string currentSignature = BuildHandSignature(activePlayerState);
+        string currentSignature = BuildHandSignature(displayedHandOwner);
 
         if (currentSignature == lastHandSignature)
         {
@@ -132,7 +141,7 @@ public class UIManager : MonoBehaviour
         }
 
         lastHandSignature = currentSignature;
-        RebuildActiveHandButtons(activePlayerState);
+        RebuildActiveHandButtons(displayedHandOwner);
     }
 
     private string BuildHandSignature(PlayerState playerState)
@@ -145,6 +154,10 @@ public class UIManager : MonoBehaviour
         StringBuilder builder = new StringBuilder();
 
         builder.Append(gameManager.ActivePlayer);
+        builder.Append("|");
+        builder.Append(gameManager.InputState);
+        builder.Append("|");
+        builder.Append(playerState.PlayerName);
         builder.Append("|");
 
         for (int i = 0; i < playerState.Deck.Hand.Count; i++)
@@ -268,7 +281,7 @@ public class UIManager : MonoBehaviour
             return;
         }
 
-        bool selectionAccepted = gameManager.SelectCardFromActiveHand(card);
+        bool selectionAccepted = gameManager.SelectCardFromVisibleHand(card);
 
         if (!selectionAccepted)
         {

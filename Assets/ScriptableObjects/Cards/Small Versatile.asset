@@ -13,6 +13,6 @@ MonoBehaviour:
   m_Name: Small Versatile
   m_EditorClassIdentifier: Assembly-CSharp::CardData
   cardName: Small Versatile
-  cardType: 0
+  cardType: 2
   value: 2
   description: Quite a small versatile, but could be useful:)

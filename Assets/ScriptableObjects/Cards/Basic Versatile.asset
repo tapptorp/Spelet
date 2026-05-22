@@ -14,5 +14,5 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CardData
   cardName: Basic Versatile
   cardType: 2
-  value: 0
+  value: 3
   description: Basic versatile, nothing special.

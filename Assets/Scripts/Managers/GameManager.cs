@@ -43,6 +43,11 @@ public class GameManager : MonoBehaviour
 
     private CardData selectedAttackCard;
 
+    // Temporary combat state.
+    // Kept in GameManager for now. Later this can be moved to CombatManager.
+    private PlayerState defendingPlayerState;
+    private CharacterUnit pendingAttackTarget;
+
     public PlayerState PlayerOne => playerOne;
     public PlayerState PlayerTwo => playerTwo;
 
@@ -65,6 +70,23 @@ public class GameManager : MonoBehaviour
     public CharacterUnit EnemyUnit => EnemyPlayerState?.Unit;
 
     public CardData SelectedAttackCard => selectedAttackCard;
+
+    public PlayerState DefendingPlayerState => defendingPlayerState;
+
+    // Minimal local-play helper.
+    // In online play this would probably be replaced by "show the local player's hand".
+    public PlayerState DisplayedHandOwner
+    {
+        get
+        {
+            if (inputState == GameInputState.DefenderChoosingDefense && defendingPlayerState != null)
+            {
+                return defendingPlayerState;
+            }
+
+            return ActivePlayerState;
+        }
+    }
 
     public int ActionsRemainingThisTurn => ActivePlayerState != null
         ? ActivePlayerState.ActionsRemaining
@@ -243,7 +265,7 @@ public class GameManager : MonoBehaviour
         ActivePlayerState.StartTurn(actionsPerTurn);
 
         inputState = GameInputState.WaitingForActivePlayerAction;
-        selectedAttackCard = null;
+        ClearCombatState();
 
         Debug.Log($"Starting turn for {ActivePlayerState.PlayerName}. Active unit: {ActiveUnit.CharacterName}. Actions: {ActivePlayerState.ActionsRemaining}");
     }
@@ -371,7 +393,7 @@ public class GameManager : MonoBehaviour
 
         Debug.Log($"Cancelled attack with {cardName}.");
 
-        selectedAttackCard = null;
+        ClearCombatState();
         inputState = GameInputState.WaitingForActivePlayerAction;
     }
 
@@ -487,6 +509,16 @@ public class GameManager : MonoBehaviour
         return movementManager.GetMoveValidationError(ActiveUnit, targetTile);
     }
 
+    public bool SelectCardFromVisibleHand(CardData selectedCard)
+    {
+        if (inputState == GameInputState.DefenderChoosingDefense)
+        {
+            return SelectDefenseCardFromDefenderHand(selectedCard);
+        }
+
+        return SelectCardFromActiveHand(selectedCard);
+    }
+
     public bool SelectCardFromActiveHand(CardData selectedCard)
     {
         if (!CanSelectCardFromActiveHand(selectedCard))
@@ -568,12 +600,17 @@ public class GameManager : MonoBehaviour
 
     private bool IsCardInActivePlayerHand(CardData card)
     {
-        if (card == null || ActivePlayerState == null || ActivePlayerState.Deck == null)
+        return IsCardInPlayerHand(ActivePlayerState, card);
+    }
+
+    private bool IsCardInPlayerHand(PlayerState playerState, CardData card)
+    {
+        if (card == null || playerState == null || playerState.Deck == null)
         {
             return false;
         }
 
-        foreach (CardData handCard in ActivePlayerState.Deck.Hand)
+        foreach (CardData handCard in playerState.Deck.Hand)
         {
             if (handCard == card)
             {
@@ -588,6 +625,12 @@ public class GameManager : MonoBehaviour
     {
         return card != null &&
                (card.CardType == CardType.Attack || card.CardType == CardType.Versatile);
+    }
+
+    private bool CanUseCardAsDefense(CardData card)
+    {
+        return card != null &&
+               (card.CardType == CardType.Defense || card.CardType == CardType.Versatile);
     }
 
     private bool TrySelectAttackTarget(Tile targetTile)
@@ -617,7 +660,7 @@ public class GameManager : MonoBehaviour
             return false;
         }
 
-        return ResolveAttackWithoutDefenseForNow(targetUnit);
+        return BeginDefenseResponse(targetUnit);
     }
 
     private string GetAttackTargetValidationError(CharacterUnit targetUnit)
@@ -656,40 +699,157 @@ public class GameManager : MonoBehaviour
         return null;
     }
 
-    private bool ResolveAttackWithoutDefenseForNow(CharacterUnit targetUnit)
+    private bool BeginDefenseResponse(CharacterUnit targetUnit)
     {
-        if (targetUnit == null)
+        if (selectedAttackCard == null)
         {
-            Debug.LogWarning("Cannot resolve attack. Target unit is null.");
+            Debug.LogWarning("Cannot begin defense response. No attack card is selected.");
             return false;
         }
 
+        if (targetUnit == null)
+        {
+            Debug.LogWarning("Cannot begin defense response. Target unit is null.");
+            return false;
+        }
+
+        pendingAttackTarget = targetUnit;
+        defendingPlayerState = EnemyPlayerState;
+        inputState = GameInputState.DefenderChoosingDefense;
+
+        Debug.Log(
+            $"{defendingPlayerState.PlayerName} is being attacked. " +
+            $"Choose a Defense/Versatile card, or press Space to skip defense. " +
+            $"The attack card is hidden until defense is chosen."
+        );
+
+        return true;
+    }
+
+    private bool SelectDefenseCardFromDefenderHand(CardData selectedCard)
+    {
+        if (isGameOver)
+        {
+            Debug.Log("Cannot select defense card. Game is over.");
+            return false;
+        }
+
+        if (inputState != GameInputState.DefenderChoosingDefense)
+        {
+            Debug.Log($"Cannot select defense card right now. Current input state is {inputState}.");
+            return false;
+        }
+
+        if (selectedCard == null)
+        {
+            Debug.LogWarning("Cannot select a null defense card.");
+            return false;
+        }
+
+        if (defendingPlayerState == null || defendingPlayerState.Deck == null)
+        {
+            Debug.LogWarning("Cannot select defense card. Defending player or deck is missing.");
+            return false;
+        }
+
+        if (!IsCardInPlayerHand(defendingPlayerState, selectedCard))
+        {
+            Debug.LogWarning($"{selectedCard.CardName} is not in {defendingPlayerState.PlayerName}'s hand.");
+            return false;
+        }
+
+        if (!CanUseCardAsDefense(selectedCard))
+        {
+            Debug.Log($"{selectedCard.CardName} cannot be used as a defense card.");
+            return false;
+        }
+
+        return ResolveAttackWithDefense(selectedCard);
+    }
+
+    public bool SkipDefense()
+    {
+        if (isGameOver)
+        {
+            Debug.Log("Cannot skip defense. Game is over.");
+            return false;
+        }
+
+        if (inputState != GameInputState.DefenderChoosingDefense)
+        {
+            Debug.Log($"Cannot skip defense right now. Current input state is {inputState}.");
+            return false;
+        }
+
+        return ResolveAttackWithDefense(null);
+    }
+
+    private bool ResolveAttackWithDefense(CardData defenseCard)
+    {
         if (selectedAttackCard == null)
         {
-            Debug.LogWarning("Cannot resolve attack. No attack card is selected.");
+            Debug.LogWarning("Cannot resolve combat. No attack card is selected.");
+            return false;
+        }
+
+        if (pendingAttackTarget == null)
+        {
+            Debug.LogWarning("Cannot resolve combat. No attack target is stored.");
+            return false;
+        }
+
+        if (defendingPlayerState == null)
+        {
+            Debug.LogWarning("Cannot resolve combat. Defending player is missing.");
             return false;
         }
 
         CardData attackCard = selectedAttackCard;
+        PlayerState attackingPlayerState = ActivePlayerState;
+        CharacterUnit attacker = ActiveUnit;
+        CharacterUnit defender = pendingAttackTarget;
 
-        bool removedFromHand = ActivePlayerState.Deck.RemoveCardFromHand(attackCard);
+        bool removedAttackCard = attackingPlayerState.Deck.RemoveCardFromHand(attackCard);
 
-        if (!removedFromHand)
+        if (!removedAttackCard)
         {
-            Debug.LogWarning($"Could not play {attackCard.CardName}. It was not found in hand.");
+            Debug.LogWarning($"Could not play {attackCard.CardName}. It was not found in attacker's hand.");
             return false;
         }
 
-        ActivePlayerState.Deck.AddCardToDiscardPile(attackCard);
+        attackingPlayerState.Deck.AddCardToDiscardPile(attackCard);
 
-        targetUnit.TakeDamage(attackCard.Value);
+        int defenseValue = 0;
+
+        if (defenseCard != null)
+        {
+            bool removedDefenseCard = defendingPlayerState.Deck.RemoveCardFromHand(defenseCard);
+
+            if (!removedDefenseCard)
+            {
+                Debug.LogWarning($"Could not play {defenseCard.CardName}. It was not found in defender's hand.");
+                return false;
+            }
+
+            defendingPlayerState.Deck.AddCardToDiscardPile(defenseCard);
+            defenseValue = defenseCard.Value;
+        }
+
+        int damage = Mathf.Max(attackCard.Value - defenseValue, 0);
+
+        defender.TakeDamage(damage);
+
+        string defenseText = defenseCard != null
+            ? $"{defenseCard.CardName} ({defenseCard.Value})"
+            : "no defense";
 
         Debug.Log(
-            $"{ActiveUnit.CharacterName} attacked {targetUnit.CharacterName} with {attackCard.CardName} " +
-            $"for {attackCard.Value} damage. Defense is not implemented yet."
+            $"Combat revealed: {attacker.CharacterName} attacked {defender.CharacterName} with " +
+            $"{attackCard.CardName} ({attackCard.Value}). Defender used {defenseText}. " +
+            $"Damage dealt: {damage}."
         );
 
-        selectedAttackCard = null;
+        ClearCombatState();
 
         CheckGameOver();
 
@@ -777,6 +937,13 @@ public class GameManager : MonoBehaviour
         return IsUnitInActiveUnitAttackRange(EnemyUnit);
     }
 
+    private void ClearCombatState()
+    {
+        selectedAttackCard = null;
+        defendingPlayerState = null;
+        pendingAttackTarget = null;
+    }
+
     private void CheckGameOver()
     {
         if (playerOne.Unit.IsDead)
@@ -795,7 +962,7 @@ public class GameManager : MonoBehaviour
     {
         isGameOver = true;
         inputState = GameInputState.GameOver;
-        selectedAttackCard = null;
+        ClearCombatState();
 
         Debug.Log($"Game over. {winningPlayerName} wins!");
     }
