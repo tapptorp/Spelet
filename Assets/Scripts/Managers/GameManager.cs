@@ -20,6 +20,7 @@ public class GameManager : MonoBehaviour
     [SerializeField] private BoardManager boardManager;
     [SerializeField] private MovementManager movementManager;
     [SerializeField] private CombatManager combatManager;
+    [SerializeField] private CardEffectResolver cardEffectResolver;
     [SerializeField] private CharacterUnit playerOneUnit;
     [SerializeField] private CharacterUnit playerTwoUnit;
 
@@ -135,6 +136,22 @@ public class GameManager : MonoBehaviour
             combatManager = gameObject.AddComponent<CombatManager>();
             Debug.Log("GameManager created a CombatManager automatically.");
         }
+
+        if (cardEffectResolver == null)
+        {
+            cardEffectResolver = FindAnyObjectByType<CardEffectResolver>();
+        }
+
+        if (cardEffectResolver == null)
+        {
+            cardEffectResolver = gameObject.AddComponent<CardEffectResolver>();
+            Debug.Log("GameManager created a CardEffectResolver automatically.");
+        }
+
+        if (combatManager != null && cardEffectResolver != null)
+        {
+            combatManager.SetCardEffectResolver(cardEffectResolver);
+        }
     }
 
     private bool ValidateSetup()
@@ -156,6 +173,12 @@ public class GameManager : MonoBehaviour
         if (combatManager == null)
         {
             Debug.LogError("GameManager setup error: CombatManager is missing.");
+            isValid = false;
+        }
+
+        if (cardEffectResolver == null)
+        {
+            Debug.LogError("GameManager setup error: CardEffectResolver is missing.");
             isValid = false;
         }
 
@@ -547,6 +570,11 @@ public class GameManager : MonoBehaviour
             return false;
         }
 
+        if (selectedCard.CardType == CardType.Special)
+        {
+            return PlaySpecialCard(selectedCard);
+        }
+
         if (!CanUseCardAsAttack(selectedCard))
         {
             Debug.Log($"{selectedCard.CardName} cannot be used as an attack card right now.");
@@ -563,6 +591,95 @@ public class GameManager : MonoBehaviour
         inputState = GameInputState.SelectingAttackTarget;
 
         return true;
+    }
+
+
+    private bool PlaySpecialCard(CardData specialCard)
+    {
+        if (specialCard == null)
+        {
+            Debug.LogWarning("Cannot play special card. Card is null.");
+            return false;
+        }
+
+        if (specialCard.CardType != CardType.Special)
+        {
+            Debug.LogWarning($"{specialCard.CardName} is not a Special card.");
+            return false;
+        }
+
+        if (cardEffectResolver == null)
+        {
+            Debug.LogWarning("Cannot play special card. CardEffectResolver is missing.");
+            return false;
+        }
+
+        CardEffectContext context = CardEffectContext.CreateNonCombat(ActivePlayerState, EnemyPlayerState);
+
+        if (!cardEffectResolver.CanResolveEffectsNow(
+                specialCard,
+                CardEffectTiming.Immediately,
+                context,
+                false,
+                out string validationError))
+        {
+            Debug.Log(validationError);
+            return false;
+        }
+
+        WarnIfSpecialCardHasNonImmediateEffects(specialCard);
+
+        bool removedFromHand = ActivePlayerState.Deck.RemoveCardFromHand(specialCard);
+
+        if (!removedFromHand)
+        {
+            Debug.LogWarning($"Could not play {specialCard.CardName}. It was not found in {ActivePlayerState.PlayerName}'s hand.");
+            return false;
+        }
+
+        Debug.Log($"{ActivePlayerState.PlayerName} played Special card {specialCard.CardName}.");
+
+        CardEffectResolutionResult result = cardEffectResolver.ResolveEffects(
+            specialCard,
+            CardEffectTiming.Immediately,
+            context,
+            false
+        );
+
+        ActivePlayerState.Deck.AddCardToDiscardPile(specialCard);
+
+        if (!result.WasSuccessful)
+        {
+            Debug.LogWarning($"{specialCard.CardName} was played, but at least one effect failed: {result.Message}");
+        }
+
+        CheckGameOver();
+
+        if (!isGameOver)
+        {
+            ConsumeAction();
+        }
+
+        return result.WasSuccessful;
+    }
+
+    private void WarnIfSpecialCardHasNonImmediateEffects(CardData specialCard)
+    {
+        if (specialCard == null || specialCard.Effects == null)
+        {
+            return;
+        }
+
+        foreach (CardEffectData effect in specialCard.Effects)
+        {
+            if (effect != null && effect.Timing != CardEffectTiming.Immediately)
+            {
+                Debug.LogWarning(
+                    $"{specialCard.CardName} has a {effect.Timing} effect, but normal Special cards only resolve Immediately effects right now. " +
+                    $"That effect will be ignored."
+                );
+            }
+        }
     }
 
     private bool CanSelectCardFromActiveHand(CardData selectedCard)

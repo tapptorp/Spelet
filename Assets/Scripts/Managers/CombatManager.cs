@@ -49,6 +49,9 @@ public class CombatResolutionResult
 
 public class CombatManager : MonoBehaviour
 {
+    [Header("References")]
+    [SerializeField] private CardEffectResolver cardEffectResolver;
+
     private CardData selectedAttackCard;
     private PlayerState attackingPlayerState;
     private PlayerState defendingPlayerState;
@@ -60,6 +63,30 @@ public class CombatManager : MonoBehaviour
     public CharacterUnit PendingAttackTarget => pendingAttackTarget;
 
     public bool HasSelectedAttackCard => selectedAttackCard != null;
+
+    private void Awake()
+    {
+        FindMissingReferences();
+    }
+
+    public void SetCardEffectResolver(CardEffectResolver resolver)
+    {
+        cardEffectResolver = resolver;
+    }
+
+    private void FindMissingReferences()
+    {
+        if (cardEffectResolver == null)
+        {
+            cardEffectResolver = FindAnyObjectByType<CardEffectResolver>();
+        }
+
+        if (cardEffectResolver == null)
+        {
+            cardEffectResolver = gameObject.AddComponent<CardEffectResolver>();
+            Debug.Log("CombatManager created a CardEffectResolver automatically.");
+        }
+    }
 
     public bool BeginAttackSelection(PlayerState attackerPlayerState, CardData attackCard)
     {
@@ -217,11 +244,27 @@ public class CombatManager : MonoBehaviour
             return false;
         }
 
+        FindMissingReferences();
+
         CardData attackCard = selectedAttackCard;
         PlayerState resolvedAttackingPlayer = attackingPlayerState;
         PlayerState resolvedDefendingPlayer = defendingPlayerState;
         CharacterUnit attacker = resolvedAttackingPlayer.Unit;
         CharacterUnit defender = pendingAttackTarget;
+
+        CardEffectContext context = CardEffectContext.CreateCombat(
+            resolvedAttackingPlayer,
+            resolvedDefendingPlayer,
+            attacker,
+            defender,
+            attackCard,
+            defenseCard
+        );
+
+        if (!CanResolveCombatEffectsNow(attackCard, defenseCard, context))
+        {
+            return false;
+        }
 
         bool removedAttackCard = resolvedAttackingPlayer.Deck.RemoveCardFromHand(attackCard);
 
@@ -237,29 +280,19 @@ public class CombatManager : MonoBehaviour
 
             if (!removedDefenseCard)
             {
-                // This should be unreachable because CanResolveCombat already checked the hand.
                 Debug.LogWarning($"Could not play {defenseCard.CardName}. It was not found in defender's hand.");
                 return false;
             }
         }
 
-        CombatContext context = new CombatContext(
-            resolvedAttackingPlayer,
-            resolvedDefendingPlayer,
-            attacker,
-            defender,
-            attackCard,
-            defenseCard
-        );
-
         Debug.Log(BuildRevealText(context));
 
         // Unmatched-like order: defender first, then attacker.
-        ResolveEffects(defenseCard, CardEffectTiming.Immediately, context, true);
-        ResolveEffects(attackCard, CardEffectTiming.Immediately, context, false);
+        cardEffectResolver.ResolveEffects(defenseCard, CardEffectTiming.Immediately, context, true);
+        cardEffectResolver.ResolveEffects(attackCard, CardEffectTiming.Immediately, context, false);
 
-        ResolveEffects(defenseCard, CardEffectTiming.DuringCombat, context, true);
-        ResolveEffects(attackCard, CardEffectTiming.DuringCombat, context, false);
+        cardEffectResolver.ResolveEffects(defenseCard, CardEffectTiming.DuringCombat, context, true);
+        cardEffectResolver.ResolveEffects(attackCard, CardEffectTiming.DuringCombat, context, false);
 
         context.Winner = context.AttackValue > context.DefenseValue
             ? CombatWinner.Attacker
@@ -274,8 +307,8 @@ public class CombatManager : MonoBehaviour
             $"Winner: {context.Winner}. Damage dealt: {damage}."
         );
 
-        ResolveEffects(defenseCard, CardEffectTiming.AfterCombat, context, true);
-        ResolveEffects(attackCard, CardEffectTiming.AfterCombat, context, false);
+        cardEffectResolver.ResolveEffects(defenseCard, CardEffectTiming.AfterCombat, context, true);
+        cardEffectResolver.ResolveEffects(attackCard, CardEffectTiming.AfterCombat, context, false);
 
         resolvedAttackingPlayer.Deck.AddCardToDiscardPile(attackCard);
 
@@ -349,131 +382,40 @@ public class CombatManager : MonoBehaviour
         return true;
     }
 
-    private void ResolveEffects(CardData card, CardEffectTiming timing, CombatContext context, bool cardBelongsToDefender)
+    private bool CanResolveCombatEffectsNow(CardData attackCard, CardData defenseCard, CardEffectContext context)
     {
-        if (card == null || card.Effects == null)
+        if (cardEffectResolver == null)
         {
-            return;
+            Debug.LogWarning("Cannot resolve combat effects. CardEffectResolver is missing.");
+            return false;
         }
 
-        foreach (CardEffectData effect in card.Effects)
-        {
-            if (effect == null || effect.Timing != timing)
-            {
-                continue;
-            }
-
-            ApplyEffect(effect, context, cardBelongsToDefender, card);
-        }
+        // Same order as actual resolution, so validation matches gameplay order.
+        return CanResolveEffectsNow(defenseCard, CardEffectTiming.Immediately, context, true) &&
+               CanResolveEffectsNow(attackCard, CardEffectTiming.Immediately, context, false) &&
+               CanResolveEffectsNow(defenseCard, CardEffectTiming.DuringCombat, context, true) &&
+               CanResolveEffectsNow(attackCard, CardEffectTiming.DuringCombat, context, false) &&
+               CanResolveEffectsNow(defenseCard, CardEffectTiming.AfterCombat, context, true) &&
+               CanResolveEffectsNow(attackCard, CardEffectTiming.AfterCombat, context, false);
     }
 
-    private void ApplyEffect(CardEffectData effect, CombatContext context, bool cardBelongsToDefender, CardData sourceCard)
+    private bool CanResolveEffectsNow(CardData card, CardEffectTiming timing, CardEffectContext context, bool cardBelongsToDefender)
     {
-        if (effect.Value <= 0)
+        if (card == null)
         {
-            Debug.LogWarning($"{sourceCard.CardName} has an effect with value <= 0. Skipping effect.");
-            return;
+            return true;
         }
 
-        PlayerState targetPlayer = GetTargetPlayer(effect.Target, context, cardBelongsToDefender);
-        CharacterUnit targetUnit = targetPlayer != null ? targetPlayer.Unit : null;
-
-        switch (effect.EffectType)
+        if (!cardEffectResolver.CanResolveEffectsNow(card, timing, context, cardBelongsToDefender, out string validationError))
         {
-            case CardEffectType.DrawCards:
-                DrawCards(targetPlayer, effect.Value, sourceCard);
-                break;
-
-            case CardEffectType.Heal:
-                if (targetUnit == null)
-                {
-                    Debug.LogWarning($"Cannot heal. Target unit is missing for {sourceCard.CardName}.");
-                    return;
-                }
-
-                targetUnit.Heal(effect.Value);
-                Debug.Log($"{sourceCard.CardName}: {targetUnit.CharacterName} healed {effect.Value}.");
-                break;
-
-            case CardEffectType.DealDamage:
-                if (targetUnit == null)
-                {
-                    Debug.LogWarning($"Cannot deal damage. Target unit is missing for {sourceCard.CardName}.");
-                    return;
-                }
-
-                targetUnit.TakeDamage(effect.Value);
-                Debug.Log($"{sourceCard.CardName}: {targetUnit.CharacterName} took {effect.Value} effect damage.");
-                break;
-
-            case CardEffectType.BonusAttack:
-                context.AttackValue += effect.Value;
-                Debug.Log($"{sourceCard.CardName}: attack value increased by {effect.Value}.");
-                break;
-
-            case CardEffectType.BonusDefense:
-                context.DefenseValue += effect.Value;
-                Debug.Log($"{sourceCard.CardName}: defense value increased by {effect.Value}.");
-                break;
-
-            default:
-                Debug.LogWarning($"Unhandled effect type {effect.EffectType} on {sourceCard.CardName}.");
-                break;
+            Debug.Log(validationError);
+            return false;
         }
+
+        return true;
     }
 
-    private void DrawCards(PlayerState targetPlayer, int amount, CardData sourceCard)
-    {
-        if (targetPlayer == null || targetPlayer.Deck == null)
-        {
-            Debug.LogWarning($"Cannot draw cards. Target player or deck is missing for {sourceCard.CardName}.");
-            return;
-        }
-
-        int drawnCount = 0;
-
-        for (int i = 0; i < amount; i++)
-        {
-            CardData drawnCard = targetPlayer.Deck.DrawCard();
-
-            if (drawnCard == null)
-            {
-                break;
-            }
-
-            drawnCount++;
-        }
-
-        Debug.Log($"{sourceCard.CardName}: {targetPlayer.PlayerName} drew {drawnCount} card(s).");
-    }
-
-    private PlayerState GetTargetPlayer(CardEffectTarget target, CombatContext context, bool cardBelongsToDefender)
-    {
-        switch (target)
-        {
-            case CardEffectTarget.Self:
-                return cardBelongsToDefender
-                    ? context.DefendingPlayer
-                    : context.AttackingPlayer;
-
-            case CardEffectTarget.Opponent:
-                return cardBelongsToDefender
-                    ? context.AttackingPlayer
-                    : context.DefendingPlayer;
-
-            case CardEffectTarget.Attacker:
-                return context.AttackingPlayer;
-
-            case CardEffectTarget.Defender:
-                return context.DefendingPlayer;
-
-            default:
-                Debug.LogWarning($"Unhandled effect target {target}.");
-                return null;
-        }
-    }
-
-    private string BuildRevealText(CombatContext context)
+    private string BuildRevealText(CardEffectContext context)
     {
         string defenseText = context.DefenseCard != null
             ? $"{context.DefenseCard.CardName} ({context.DefenseCard.Value})"
@@ -500,39 +442,6 @@ public class CombatManager : MonoBehaviour
         }
 
         return false;
-    }
-
-    private class CombatContext
-    {
-        public PlayerState AttackingPlayer { get; private set; }
-        public PlayerState DefendingPlayer { get; private set; }
-        public CharacterUnit Attacker { get; private set; }
-        public CharacterUnit Defender { get; private set; }
-        public CardData AttackCard { get; private set; }
-        public CardData DefenseCard { get; private set; }
-
-        public int AttackValue { get; set; }
-        public int DefenseValue { get; set; }
-        public CombatWinner Winner { get; set; }
-
-        public CombatContext(
-            PlayerState attackingPlayer,
-            PlayerState defendingPlayer,
-            CharacterUnit attacker,
-            CharacterUnit defender,
-            CardData attackCard,
-            CardData defenseCard)
-        {
-            AttackingPlayer = attackingPlayer;
-            DefendingPlayer = defendingPlayer;
-            Attacker = attacker;
-            Defender = defender;
-            AttackCard = attackCard;
-            DefenseCard = defenseCard;
-            AttackValue = attackCard != null ? attackCard.Value : 0;
-            DefenseValue = defenseCard != null ? defenseCard.Value : 0;
-            Winner = CombatWinner.Defender;
-        }
     }
 }
 
